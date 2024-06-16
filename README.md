@@ -1,0 +1,1 @@
+# Simple WebSocket Message Queue using simple MQTT format
