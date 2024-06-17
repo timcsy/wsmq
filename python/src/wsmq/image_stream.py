@@ -78,6 +78,7 @@ class ImageStream:
         stream.height = metadata.get('height', 480)
         stream.pix_fmt = metadata.get('pix_fmt', 'yuv420p')
         stream.codec_context.gop_size = metadata.get('gop_size', 50)  # Set keyframe interval in frames or called GOP size
+        stream.codec_context.options = {'lag-in-frames': '0'} # zero latency
         self.encoders[topic] = stream
 
     def initialize_decoder(self, topic):
