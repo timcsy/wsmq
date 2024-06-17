@@ -115,8 +115,8 @@ class ImageStream:
         Thread function to send frames
         '''
         while not self.stop_event.is_set():
-            for topic in self.queues:
-                if not self.queues[topic].empty():
+            for topic in list(self.queues):
+                if topic in self.queues and not self.queues[topic].empty():
                     frame = self.queues[topic].get()
                     packets = self.encode_frame(frame, topic)
                     for packet in packets:

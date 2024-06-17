@@ -2,24 +2,46 @@ import { ImageStream } from './image_stream.js'
 
 let terminate = false
 
-async function test_image_stream_sub() {
-  const stream = new ImageStream('ws://localhost:6789', 100)
-  await stream.start()
-  
-  // Create a single canvas element
-  const canvas_front = document.createElement('canvas')
-  document.body.appendChild(canvas_front)
-  const canvas_front_cam = document.createElement('canvas')
-  document.body.appendChild(canvas_front_cam)
-  const canvas_back = document.createElement('canvas')
-  document.body.appendChild(canvas_back)
-  const canvas_back_cam = document.createElement('canvas')
-  document.body.appendChild(canvas_back_cam)
+function displayText(mq, topic, name) {
+  const container = document.createElement('div')
+  container.innerHTML = '<u><b>' + name + '</b></u><br>'
+  const text = document.createElement('div')
+  container.appendChild(text)
+  document.body.appendChild(container)
+  mq.subscribe(topic, (topic, payload, props) => {
+    text.innerText = payload
+  })
+}
 
-  stream.displayImage('video/front', canvas_front)
-  stream.displayImage('video/front_cam', canvas_front_cam)
-  stream.displayImage('video/back', canvas_back)
-  stream.displayImage('video/back_cam', canvas_back_cam)
+function displayImage(stream, topic, name) {
+  const container = document.createElement('div')
+  container.innerHTML = '<u><b>' + name + '</b></u><br>'
+  const canvas = document.createElement('canvas')
+  container.appendChild(canvas)
+  document.body.appendChild(container)
+  stream.displayImage(topic, canvas)
+}
+
+async function start() {
+  const stream = new ImageStream('ws://localhost:6789', 100)
+  const mq = stream.client
+  await stream.start()
+
+  displayText(mq, "action", "action")
+  displayText(mq, 'observation/RaySensor', "observation['RaySensor']")
+  displayImage(stream, "observation/CameraFront", "observation['CameraFront']")
+  displayImage(stream, "cam/CameraFront", "cam['CameraFront']")
+  displayImage(stream, "observation/CameraBack", "observation['CameraBack']")
+  displayImage(stream, "cam/CameraBack", "cam['CameraBack']")
+  displayText(mq, 'observation/Progress', "observation['Progress']")
+  displayText(mq, 'observation/UsedTime', "observation['UsedTime']")
+  displayText(mq, 'observation/Velocity', "observation['Velocity']")
+  displayText(mq, 'observation/RefillRemaining', "observation['RefillRemaining']")
+  displayText(mq, 'observation/EffectRemaining', "observation['EffectRemaining']")
+  displayText(mq, 'reward', "reward")
+  displayText(mq, 'terminated', "terminated")
+  displayText(mq, 'truncated', "truncated")
+  displayText(mq, 'info', "info")
 
   while (!terminate) {
     await new Promise(resolve => setTimeout(resolve, 33))
@@ -29,8 +51,8 @@ async function test_image_stream_sub() {
   terminate = false
 }
 
-document.getElementById('sub_btn').addEventListener('click', () => {
-  test_image_stream_sub()
+document.getElementById('start_btn').addEventListener('click', () => {
+  start()
 })
 
 document.getElementById('terminate_btn').addEventListener('click', () => {
