@@ -267,7 +267,7 @@
             }
 
             el.style.width = `${contentRect.width}px`
-            el.style.height = `${contentRect.height}px`
+            el.style.height = `${contentRect.height - 48}px`
             el.style.left = '0px'
             el.style.top = '0px'
           }
@@ -297,11 +297,31 @@
           emit('focus', props.windowId)
         }
 
+        const onResize = (entries) => {
+          for (let entry of entries) {
+            const el = entry.target
+            const parentRect = el.parentElement.getBoundingClientRect()
+            const toolbarHeight = 48
+
+            if (el.offsetHeight + el.offsetTop > parentRect.height - toolbarHeight) {
+              el.style.height = `${parentRect.height - toolbarHeight - el.offsetTop}px`
+            }
+          }
+        }
+
+        const resizeObserver = new ResizeObserver(onResize)
+
+        onMounted(() => {
+          const el = windowRef.value
+          resizeObserver.observe(el)
+        })
+
         return {
           windowRef,
           toggleMaximize,
           toggleMinimize,
-          minimized
+          minimized,
+          onResize
         }
       },
       methods: {
