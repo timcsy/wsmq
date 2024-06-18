@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@3.1.9/dist/vuetify.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@3.1.9/dist/vuetify.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .content {
+      padding: 8px;
+      transition: margin-left 0.3s ease;
+      min-height: 100vh;
+      margin-top: 48px;
+      position: relative;
+    }
+
+    .content.drawer-open {
+      margin-left: 256px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      margin: 2px 0;
+    }
+
+    .checkbox-label input {
+      margin-right: 8px;
+    }
+
+    .draggable-window {
+      position: absolute;
+      border: 1px solid #ccc;
+      background: white;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      resize: both;
+      overflow: auto;
+      border-radius: 8px;
+    }
+
+    .window-title {
+      background: linear-gradient(to bottom, #f0f0f0, #d0d0d0);
+      color: black;
+      padding: 8px;
+      cursor: move;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+    }
+
+    .window-content {
+      padding: 8px;
+    }
+
+    .drawer-content {
+      padding: 8px;
+    }
+
+    .window-buttons {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-right: 16px; /* 增加按钮和标题之间的距离 */
+    }
+
+    .window-button {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .window-button i {
+      font-size: 2px;
+      color: black;
+    }
+
+    .window-button.close {
+      background-color: #ff5f57;
+    }
+
+    .window-button.minimize {
+      background-color: #ffbd2e;
+    }
+
+    .window-button.maximize {
+      background-color: #28c840;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <script>
+    const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
+    const { createVuetify, useDisplay } = Vuetify
+
+    const vuetify = createVuetify()
+
+    const TreeNode = defineComponent({
+      name: 'TreeNode',
+      props: {
+        node: Object,
+        path: String,
+        checkedPaths: Array
+      },
+      data() {
+        return {
+          checked: false
+        }
+      },
+      watch: {
+        checked(newVal) {
+          this.$emit('select', this.path, newVal)
+        },
+        checkedPaths: {
+          handler(newVal) {
+            this.checked = newVal.includes(this.path)
+          },
+          immediate: true
+        }
+      },
+      methods: {
+        handleChildSelect(childPath, checked) {
+          this.$emit('select', childPath, checked)
+        },
+        toggleCheckbox(event) {
+          this.checked = event.target.checked
+        }
+      },
+      template: `
+        <div>
+          <label class="checkbox-label">
+            <input type="checkbox" v-model="checked" @change="toggleCheckbox">
+            {{ node.name }}
+          </label>
+          <div v-if="node.children" style="margin-left: 16px;">
+            <tree-node 
+              v-for="child in node.children" 
+              :key="child.id" 
+              :node="child" 
+              :path="path + '/' + child.name" 
+              :checkedPaths="checkedPaths"
+              @select="handleChildSelect" 
+            />
+          </div>
+        </div>
+      `
+    })
+
+    const DraggableWindow = defineComponent({
+      name: 'DraggableWindow',
+      props: {
+        title: String,
+        content: String,
+        windowId: String,
+        windowZIndex: Number
+      },
+      setup(props, { emit }) {
+        const windowRef = ref(null)
+        const maximized = ref(false)
+        const minimized = ref(false)
+        const originalSize = ref({})
+
+        onMounted(() => {
+          const el = windowRef.value
+
+          let startX, startY, initialX, initialY
+
+          const onMouseMove = (event) => {
+            const dx = event.clientX - startX
+            const dy = event.clientY - startY
+            let newX = initialX + dx
+            let newY = initialY + dy
+
+            // Ensure the window doesn't overlap the toolbar or go out of bounds
+            const parentRect = el.parentElement.getBoundingClientRect()
+            const elRect = el.getBoundingClientRect()
+            const toolbarHeight = 48
+
+            if (newY < 0) {
+              newY = 0
+            }
+            if (newX < 0) {
+              newX = 0
+            }
+            if (newX + elRect.width > parentRect.width) {
+              newX = parentRect.width - elRect.width
+            }
+            if (newY + elRect.height > parentRect.height - toolbarHeight) {
+              newY = parentRect.height - elRect.height - toolbarHeight
+            }
+
+            el.style.left = `${newX}px`
+            el.style.top = `${newY}px`
+          }
+
+          const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove)
+            document.removeEventListener('mouseup', onMouseUp)
+          }
+
+          el.addEventListener('mousedown', (event) => {
+            if (!event.target.classList.contains('window-title')) return
+
+            startX = event.clientX
+            startY = event.clientY
+            initialX = el.offsetLeft
+            initialY = el.offsetTop
+
+            document.addEventListener('mousemove', onMouseMove)
+            document.addEventListener('mouseup', onMouseUp)
+
+            event.preventDefault()
+          })
+
+          el.addEventListener('mousedown', () => {
+            emit('focus', props.windowId)
+          })
+
+          el.ondragstart = () => false
+
+          // Set initial size based on title width
+          nextTick(() => {
+            const titleWidth = el.querySelector('.window-title').offsetWidth
+            const buttonsWidth = el.querySelector('.window-buttons').offsetWidth
+            el.style.minWidth = `${titleWidth + buttonsWidth + 20}px`
+            el.style.minHeight = '36px'
+          })
+        })
+
+        watch(() => props.windowZIndex, (newZIndex) => {
+          windowRef.value.style.zIndex = newZIndex
+        })
+
+        const toggleMaximize = () => {
+          const el = windowRef.value
+          const contentRect = el.parentElement.getBoundingClientRect()
+
+          if (maximized.value) {
+            el.style.width = originalSize.value.width
+            el.style.height = originalSize.value.height
+            el.style.left = originalSize.value.left
+            el.style.top = originalSize.value.top
+          } else {
+            originalSize.value = {
+              width: el.style.width,
+              height: el.style.height,
+              left: el.style.left,
+              top: el.style.top
+            }
+
+            el.style.width = `${contentRect.width}px`
+            el.style.height = `${contentRect.height}px`
+            el.style.left = '0px'
+            el.style.top = '0px'
+          }
+
+          maximized.value = !maximized.value
+          emit('focus', props.windowId)
+        }
+
+        const toggleMinimize = () => {
+          const el = windowRef.value
+
+          if (minimized.value) {
+            el.style.width = originalSize.value.width
+            el.style.height = originalSize.value.height
+            el.style.left = originalSize.value.left
+            el.style.top = originalSize.value.top
+          } else {
+            originalSize.value = {
+              width: el.style.width,
+              height: el.style.height,
+              left: el.style.left,
+              top: el.style.top
+            }
+          }
+
+          minimized.value = !minimized.value
+          emit('focus', props.windowId)
+        }
+
+        return {
+          windowRef,
+          toggleMaximize,
+          toggleMinimize,
+          minimized
+        }
+      },
+      methods: {
+        closeWindow() {
+          this.$emit('close', this.windowId)
+        },
+        minimizeWindow() {
+          this.toggleMinimize()
+          this.$emit('minimize', this.windowId)
+        },
+        maximizeWindow() {
+          this.toggleMaximize()
+        }
+      },
+      template: `
+        <div v-show="!minimized" class="draggable-window" ref="windowRef" :style="{ zIndex: windowZIndex }">
+          <div class="window-title">
+            <div class="window-buttons">
+              <div class="window-button close" @click="closeWindow"><i class="fas fa-times"></i></div>
+              <div class="window-button minimize" @click="minimizeWindow"><i class="fas fa-minus"></i></div>
+              <div class="window-button maximize" @click="maximizeWindow"><i class="fas fa-expand"></i></div>
+            </div>
+            <div>{{ title }}</div>
+          </div>
+          <div class="window-content">{{ content }}</div>
+        </div>
+      `
+    })
+
+    createApp({
+      components: {
+        'tree-node': TreeNode,
+        'draggable-window': DraggableWindow
+      },
+      setup() {
+        const { mdAndUp, mdAndDown } = useDisplay()
+
+        return {
+          mdAndUp,
+          mdAndDown
+        }
+      },
+      data() {
+        return {
+          drawerOpen: true,
+          treeData: [
+            {
+              id: 1,
+              name: 'Item 1',
+              children: [
+                { id: 2, name: 'Item 1.1' },
+                { id: 3, name: 'Item 1.2' }
+              ]
+            },
+            {
+              id: 4,
+              name: 'Item 2',
+              children: [
+                { id: 5, name: 'Item 2.1' },
+                { id: 6, name: 'Item 2.2' }
+              ]
+            }
+          ],
+          windows: [],
+          windowOrder: [],
+          checkedPaths: []
+        }
+      },
+      methods: {
+        toggleDrawer() {
+          this.drawerOpen = !this.drawerOpen
+        },
+        updateSelectedPaths(path, checked) {
+          const windowId = path
+          if (checked) {
+            if (!this.checkedPaths.includes(path)) {
+              this.checkedPaths.push(path)
+            }
+            const existingWindow = this.windows.find(w => w.id === windowId)
+            if (existingWindow) {
+              this.$refs[`window-${windowId}`][0].toggleMinimize()
+            } else {
+              this.windows.push({ id: windowId, title: path, content: `Content for ${path}`, minimized: false })
+              this.windowOrder.push(windowId)
+            }
+            this.handleWindowFocus(windowId)
+          } else {
+            this.checkedPaths = this.checkedPaths.filter(p => p !== path)
+            const windowToMinimize = this.$refs[`window-${windowId}`][0]
+            if (windowToMinimize) {
+              windowToMinimize.toggleMinimize()
+            }
+          }
+        },
+        getNodePath(node) {
+          const path = []
+          let current = node
+          while (current) {
+            path.unshift(current.name)
+            current = this.findParent(this.treeData, current)
+          }
+          return path.join('/')
+        },
+        findParent(nodes, target) {
+          for (let node of nodes) {
+            if (node.children && node.children.includes(target)) {
+              return node
+            }
+            if (node.children) {
+              const parent = this.findParent(node.children, target)
+              if (parent) {
+                return parent
+              }
+            }
+          }
+          return null
+        },
+        handleWindowFocus(windowId) {
+          this.windowOrder = this.windowOrder.filter(id => id !== windowId)
+          this.windowOrder.push(windowId)
+        },
+        getWindowZIndex(windowId) {
+          return this.windowOrder.indexOf(windowId) + 1000
+        },
+        closeWindow(windowId) {
+          this.windows = this.windows.filter(w => w.id !== windowId)
+          this.windowOrder = this.windowOrder.filter(id => id !== windowId)
+          this.checkedPaths = this.checkedPaths.filter(path => path !== windowId)
+        },
+        minimizeWindow(windowId) {
+          this.$refs[`window-${windowId}`][0].toggleMinimize()
+          this.checkedPaths = this.checkedPaths.filter(path => path !== windowId)
+        },
+        maximizeWindow(windowId) {
+          this.$refs[`window-${windowId}`][0].toggleMaximize()
+        }
+      },
+      computed: {
+        contentClasses() {
+          return {
+            'drawer-open': this.mdAndUp && this.drawerOpen
+          }
+        }
+      },
+      template: `
+        <v-app>
+          <v-app-bar app dense height="48" color="#333">
+            <v-app-bar-nav-icon @click="toggleDrawer" style="color: white;"></v-app-bar-nav-icon>
+            <v-toolbar-title style="color: white;">Dashboard</v-toolbar-title>
+          </v-app-bar>
+          <v-navigation-drawer
+            app
+            v-model="drawerOpen"
+            :temporary="mdAndDown"
+          >
+            <div class="drawer-content">
+              <tree-node 
+                v-for="item in treeData" 
+                :key="item.id" 
+                :node="item" 
+                :path="item.name" 
+                :checkedPaths="checkedPaths"
+                @select="updateSelectedPaths" 
+              />
+            </div>
+          </v-navigation-drawer>
+          <div :class="['content', contentClasses]" ref="content">
+            <draggable-window
+              v-for="window in windows"
+              :key="window.id"
+              :ref="'window-' + window.id"
+              :title="window.title"
+              :content="window.content"
+              :window-id="window.id"
+              :window-z-index="getWindowZIndex(window.id)"
+              @focus="handleWindowFocus"
+              @close="closeWindow"
+              @minimize="minimizeWindow"
+              @maximize="maximizeWindow"
+            />
+          </div>
+        </v-app>
+      `
+    }).use(vuetify).mount('#app')
+  </script>
+</body>
+
+</html>
