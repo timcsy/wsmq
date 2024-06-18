@@ -12,7 +12,7 @@ import cv2
 from wsmq import WebSocketMQClient
 
 class ImageStream:
-    def __init__(self, url='ws://localhost:6789', buffer_size=100):
+    def __init__(self, url='ws://localhost:6789', buffer_size=1):
         self.url = url
         self.buffer_size = buffer_size
         self.queues = {}  # Queues for storing frames for different topics

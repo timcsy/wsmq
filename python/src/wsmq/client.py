@@ -36,7 +36,7 @@ class WebSocketMQClient:
         keep_alive = 60
         payload = struct.pack('!H', len(self.id)) + self.id.encode()
         connect_message = struct.pack('!BBH4sBBH', 0x10, 10 + len(self.id), len(protocol_name), protocol_name.encode(), protocol_level, connect_flags, keep_alive) + payload
-        self.ws.send(connect_message, opcode=websocket.ABNF.OPCODE_BINARY)
+        self._send(connect_message, websocket.ABNF.OPCODE_BINARY)
 
     def on_message(self, ws, message):
         data = bytearray(message)
@@ -99,14 +99,14 @@ class WebSocketMQClient:
         self.on_receives[topic] = on_receive
         topic_length = len(topic)
         message = struct.pack('!BBH', 0x82, 5 + topic_length, msg_id) + struct.pack('!H', topic_length) + topic.encode() + b'\x00'
-        self.ws.send(message, websocket.ABNF.OPCODE_BINARY)
+        self._send(message, websocket.ABNF.OPCODE_BINARY)
         logging.info(f'Subscribed to topic: {topic}')
 
     def unsubscribe(self, topic, msg_id=1):
         del self.on_receives[topic]
         topic_length = len(topic)
         message = struct.pack('!BBH', 0xA2, 4 + topic_length, msg_id) + struct.pack('!H', topic_length) + topic.encode()
-        self.ws.send(message, websocket.ABNF.OPCODE_BINARY)
+        self._send(message, websocket.ABNF.OPCODE_BINARY)
         logging.info(f'Unsubscribed from topic: {topic}')
     
     def publish(self, topic, payload, content_type=None):
@@ -129,7 +129,7 @@ class WebSocketMQClient:
         remaining_length = 2 + topic_length + 1 + properties_length + payload_length
         remaining_length_bytes = self.encode_remaining_length(remaining_length)
         message = struct.pack('!B', fixed_header) + remaining_length_bytes + struct.pack('!H', topic_length) + topic.encode() + struct.pack('!B', properties_length) + properties + payload
-        self.ws.send(message, opcode=websocket.ABNF.OPCODE_BINARY)
+        self._send(message, websocket.ABNF.OPCODE_BINARY)
         logging.debug(f'Published message to topic {topic}, is_binary: {is_binary}, content_type: {content_type}')
     
     def encode_remaining_length(self, length):
@@ -149,11 +149,15 @@ class WebSocketMQClient:
         while ws.keep_running:
             time.sleep(self.ping_interval)
             pingreq_message = struct.pack('!BB', 0xC0, 0x00)
-            ws.send(pingreq_message, opcode=websocket.ABNF.OPCODE_BINARY)
+            self._send(pingreq_message, websocket.ABNF.OPCODE_BINARY)
             logging.debug('Sent PINGREQ')
     
     def disconnect(self):
         disconnect_message = struct.pack('!BB', 0xE0, 0x00)
-        self.ws.send(disconnect_message, opcode=websocket.ABNF.OPCODE_BINARY)
+        self._send(disconnect_message, websocket.ABNF.OPCODE_BINARY)
         logging.debug('Sent DISCONNECT')
         self.ws.close()
+
+    def _send(self, message, opcode):
+        if self.ws and self.ws.sock and self.ws.sock.connected:
+            self.ws.send(message, opcode=opcode)

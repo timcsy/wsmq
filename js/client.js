@@ -7,9 +7,9 @@ function generateUUID() {
     d += performance.now() // use high-precision timer if available
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = (d + Math.random()*16)%16 | 0
-    d = Math.floor(d/16)
-    return (c === 'x' ? r : (r&0x3|0x8)).toString(16)
+    const r = (d + Math.random() * 16) % 16 | 0
+    d = Math.floor(d / 16)
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
   })
 }
 
@@ -29,7 +29,7 @@ class WebSocketMQClient {
     this.pingInterval = 10
     this.onReceives = {}
     this.ws = null
-		this.pingIntervalId = null
+    this.pingIntervalId = null
   }
 
   connect(daemon = false) {
@@ -51,7 +51,13 @@ class WebSocketMQClient {
 
     this.ws.onclose = () => {
       console.log('Connection closed')
-			clearInterval(this.pingIntervalId)
+      clearInterval(this.pingIntervalId)
+    }
+  }
+
+  _send(message) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(message)
     }
   }
 
@@ -62,11 +68,11 @@ class WebSocketMQClient {
     const keepAlive = 60
     const clientIdArray = new Uint8Array([this.id.length >> 8, this.id.length & 0xFF].concat(Array.from(this.id).map(c => c.charCodeAt(0))))
     const connectMessage = new Uint8Array([0x10, 10 + this.id.length, 0x00, protocolName.length, ...protocolName.split('').map(c => c.charCodeAt(0)), protocolLevel, connectFlags, keepAlive >> 8, keepAlive & 0xFF, ...clientIdArray])
-    this.ws.send(connectMessage)
+    this._send(connectMessage)
   }
 
   async onMessage(message) {
-		if (message instanceof Blob) {
+    if (message instanceof Blob) {
       message = await message.arrayBuffer()
     }
 
@@ -127,7 +133,7 @@ class WebSocketMQClient {
     this.onReceives[topic] = onReceive
     const topicLength = topic.length
     const message = new Uint8Array([0x82, 5 + topicLength, msgId >> 8, msgId & 0xFF, topicLength >> 8, topicLength & 0xFF, ...topic.split('').map(c => c.charCodeAt(0)), 0x00])  // QoS
-    this.ws.send(message)
+    this._send(message)
     console.log(`Subscribed to topic: ${topic}`)
   }
 
@@ -135,7 +141,7 @@ class WebSocketMQClient {
     delete this.onReceives[topic]
     const topicLength = topic.length
     const message = new Uint8Array([0xA2, 4 + topicLength, msgId >> 8, msgId & 0xFF, topicLength >> 8, topicLength & 0xFF, ...topic.split('').map(c => c.charCodeAt(0))])
-    this.ws.send(message)
+    this._send(message)
     console.log(`Unsubscribed from topic: ${topic}`)
   }
 
@@ -151,11 +157,11 @@ class WebSocketMQClient {
     const remainingLength = 2 + topicLength + 1 + propertiesLength + payloadLength
     const remainingLengthBytes = this.encodeRemainingLength(remainingLength)
     const message = new Uint8Array([0x30, ...remainingLengthBytes, topicLength >> 8, topicLength & 0xFF, ...topic.split('').map(c => c.charCodeAt(0)), propertiesLength, ...properties, ...payloadBuffer])
-    this.ws.send(message)
+    this._send(message)
     // console.log(`Published message to topic ${topic}`)
   }
 
-	encodeRemainingLength(length) {
+  encodeRemainingLength(length) {
     let encoded = []
     do {
       let digit = length % 128
@@ -171,13 +177,13 @@ class WebSocketMQClient {
 
   sendPing() {
     const pingreqMessage = new Uint8Array([0xC0, 0x00])
-    this.ws.send(pingreqMessage)
+    this._send(pingreqMessage)
     // console.log('Sent PINGREQ')
   }
 
   disconnect() {
     const disconnectMessage = new Uint8Array([0xE0, 0x00])
-    this.ws.send(disconnectMessage)
+    this._send(disconnectMessage)
     this.ws.close()
     // console.log('Sent DISCONNECT')
   }

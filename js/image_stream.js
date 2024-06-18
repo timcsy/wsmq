@@ -1,7 +1,7 @@
 import { WebSocketMQClient } from './client.js'
 
 class ImageStream {
-  constructor(url = 'ws://localhost:6789', bufferSize = 100) {
+  constructor(url = 'ws://localhost:6789', bufferSize = 1) {
     this.url = url
     this.bufferSize = bufferSize
     this.queues = {} // Queues for storing frames for different topics
