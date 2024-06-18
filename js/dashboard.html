@@ -514,9 +514,9 @@
         return {
           currentTab: 'tab1',
           tabs: [
-            { name: 'tab1', drawerOpen: true },
-            { name: 'tab2', drawerOpen: false },
-            { name: 'tab3', drawerOpen: false }
+            { name: 'tab1', drawerOpen: true, lastDrawerState: true },
+            { name: 'tab2', drawerOpen: false, lastDrawerState: true },
+            { name: 'tab3', drawerOpen: false, lastDrawerState: true }
           ]
         }
       },
@@ -524,7 +524,7 @@
         setCurrentTab(tabName) {
           this.tabs.forEach(tab => {
             if (tab.name === tabName) {
-              tab.drawerOpen = true
+              tab.drawerOpen = tab.lastDrawerState
             } else {
               tab.drawerOpen = false
             }
@@ -534,6 +534,7 @@
         toggleDrawer() {
           const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
           currentTab.drawerOpen = !currentTab.drawerOpen
+          currentTab.lastDrawerState = currentTab.drawerOpen
         }
       },
       template: `
