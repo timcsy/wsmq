@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -66,6 +65,8 @@
 
     .drawer-content {
       padding: 8px;
+      overflow: auto;
+      flex-grow: 1;
     }
 
     .window-buttons {
@@ -351,22 +352,30 @@
       `
     })
 
-    createApp({
+    const DashboardView = defineComponent({
       components: {
         'tree-node': TreeNode,
         'draggable-window': DraggableWindow
       },
-      setup() {
+      props: {
+        drawerOpen: Boolean
+      },
+      setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
+        const drawerOpen = ref(props.drawerOpen)
+
+        watch(() => props.drawerOpen, (newVal) => {
+          drawerOpen.value = newVal
+        })
 
         return {
           mdAndUp,
-          mdAndDown
+          mdAndDown,
+          drawerOpen
         }
       },
       data() {
         return {
-          drawerOpen: true,
           treeData: [
             {
               id: 1,
@@ -391,9 +400,6 @@
         }
       },
       methods: {
-        toggleDrawer() {
-          this.drawerOpen = !this.drawerOpen
-        },
         updateSelectedPaths(path, checked) {
           const windowId = path
           if (checked) {
@@ -467,15 +473,10 @@
         }
       },
       template: `
-        <v-app>
-          <v-app-bar app dense height="48" color="#333">
-            <v-app-bar-nav-icon @click="toggleDrawer" style="color: white;"></v-app-bar-nav-icon>
-            <v-toolbar-title style="color: white;">Dashboard</v-toolbar-title>
-          </v-app-bar>
+        <div>
           <v-navigation-drawer
             app
             v-model="drawerOpen"
-            :temporary="mdAndDown"
           >
             <div class="drawer-content">
               <tree-node 
@@ -503,10 +504,62 @@
               @maximize="maximizeWindow"
             />
           </div>
+        </div>
+      `
+    })
+
+    createApp({
+      components: { DashboardView },
+      data() {
+        return {
+          currentTab: 'tab1',
+          tabs: [
+            { name: 'tab1', drawerOpen: true },
+            { name: 'tab2', drawerOpen: false },
+            { name: 'tab3', drawerOpen: false }
+          ]
+        }
+      },
+      methods: {
+        setCurrentTab(tabName) {
+          this.tabs.forEach(tab => {
+            if (tab.name === tabName) {
+              tab.drawerOpen = true
+            } else {
+              tab.drawerOpen = false
+            }
+          })
+          this.currentTab = tabName
+        },
+        toggleDrawer() {
+          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          currentTab.drawerOpen = !currentTab.drawerOpen
+        }
+      },
+      template: `
+        <v-app>
+          <v-app-bar app dense height="48" color="#333">
+            <v-app-bar-nav-icon @click="toggleDrawer" style="color: white;"></v-app-bar-nav-icon>
+            <v-toolbar-title style="color: white;">Dashboard</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn
+              v-for="tab in tabs"
+              :key="tab.name"
+              text
+              @click="setCurrentTab(tab.name)"
+            >
+              {{ tab.name }}
+            </v-btn>
+          </v-app-bar>
+          <dashboard-view
+            v-for="tab in tabs"
+            :key="tab.name"
+            :drawer-open="tab.drawerOpen"
+            v-show="currentTab === tab.name"
+          ></dashboard-view>
         </v-app>
       `
     }).use(vuetify).mount('#app')
   </script>
 </body>
-
 </html>
