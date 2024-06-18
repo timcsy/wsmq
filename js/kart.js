@@ -23,7 +23,7 @@ function displayImage(stream, topic, name) {
 }
 
 async function start() {
-  const stream = new ImageStream('ws://localhost:6789')
+  const stream = new ImageStream('ws://localhost:6789', bufferSize = 1)
   const mq = stream.client
   await stream.start()
 
