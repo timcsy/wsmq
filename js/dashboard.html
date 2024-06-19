@@ -102,6 +102,16 @@
     .window-button.maximize {
       background-color: #28c840;
     }
+
+    .tab-button {
+      color: white;
+      text-transform: none;
+    }
+
+    .tab-button.active {
+      background-color: white;
+      color: black;
+    }
   </style>
 </head>
 
@@ -541,16 +551,17 @@
         <v-app>
           <v-app-bar app dense height="48" color="#333">
             <v-app-bar-nav-icon @click="toggleDrawer" style="color: white;"></v-app-bar-nav-icon>
-            <v-toolbar-title style="color: white;">Dashboard</v-toolbar-title>
-            <v-spacer></v-spacer>
-            <v-btn
-              v-for="tab in tabs"
-              :key="tab.name"
-              text
-              @click="setCurrentTab(tab.name)"
-            >
-              {{ tab.name }}
-            </v-btn>
+            <div style="display: flex;">
+              <v-btn
+                v-for="tab in tabs"
+                :key="tab.name"
+                text
+                @click="setCurrentTab(tab.name)"
+                :class="['tab-button', { 'active': currentTab === tab.name }]"
+              >
+                {{ tab.name }}
+              </v-btn>
+            </div>
           </v-app-bar>
           <dashboard-view
             v-for="tab in tabs"
