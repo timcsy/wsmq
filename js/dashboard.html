@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -73,7 +74,7 @@
       display: flex;
       align-items: center;
       gap: 5px;
-      margin-right: 16px; /* 增加按钮和标题之间的距离 */
+      margin-right: 16px;
     }
 
     .window-button {
@@ -129,7 +130,8 @@
       props: {
         node: Object,
         path: String,
-        checkedPaths: Array
+        checkedPaths: Array,
+        topics: Array
       },
       data() {
         return {
@@ -153,12 +155,15 @@
         },
         toggleCheckbox(event) {
           this.checked = event.target.checked
+        },
+        isDisabled(path) {
+          return !this.topics.includes(path)
         }
       },
       template: `
         <div>
           <label class="checkbox-label">
-            <input type="checkbox" v-model="checked" @change="toggleCheckbox">
+            <input type="checkbox" :disabled="isDisabled(path)" v-model="checked" @change="toggleCheckbox">
             {{ node.name }}
           </label>
           <div v-if="node.children" style="margin-left: 16px;">
@@ -168,6 +173,7 @@
               :node="child" 
               :path="path + '/' + child.name" 
               :checkedPaths="checkedPaths"
+              :topics="topics"
               @select="handleChildSelect" 
             />
           </div>
@@ -181,7 +187,8 @@
         title: String,
         content: String,
         windowId: String,
-        windowZIndex: Number
+        windowZIndex: Number,
+        position: Object
       },
       setup(props, { emit }) {
         const windowRef = ref(null)
@@ -191,6 +198,10 @@
 
         onMounted(() => {
           const el = windowRef.value
+          el.style.left = `${props.position.left}px`
+          el.style.top = `${props.position.top}px`
+          el.style.width = `${props.position.width}px`
+          el.style.height = `${props.position.height}px`
 
           let startX, startY, initialX, initialY
 
@@ -201,7 +212,7 @@
             let newY = initialY + dy
 
             // Ensure the window doesn't overlap the toolbar or go out of bounds
-            const parentRect = el.parentElement.getBoundingClientRect()
+            const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
             const elRect = el.getBoundingClientRect()
             const toolbarHeight = 48
 
@@ -262,7 +273,7 @@
 
         const toggleMaximize = () => {
           const el = windowRef.value
-          const contentRect = el.parentElement.getBoundingClientRect()
+          const contentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
 
           if (maximized.value) {
             el.style.width = originalSize.value.width
@@ -311,7 +322,7 @@
         const onResize = (entries) => {
           for (let entry of entries) {
             const el = entry.target
-            const parentRect = el.parentElement.getBoundingClientRect()
+            const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
             const toolbarHeight = 48
 
             if (el.offsetHeight + el.offsetTop > parentRect.height - toolbarHeight) {
@@ -368,7 +379,8 @@
         'draggable-window': DraggableWindow
       },
       props: {
-        drawerOpen: Boolean
+        drawerOpen: Boolean,
+        topics: Array
       },
       setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
@@ -386,32 +398,48 @@
       },
       data() {
         return {
-          treeData: [
-            {
-              id: 1,
-              name: 'Item 1',
-              children: [
-                { id: 2, name: 'Item 1.1' },
-                { id: 3, name: 'Item 1.2' }
-              ]
-            },
-            {
-              id: 4,
-              name: 'Item 2',
-              children: [
-                { id: 5, name: 'Item 2.1' },
-                { id: 6, name: 'Item 2.2' }
-              ]
-            }
-          ],
+          treeData: [],
           windows: [],
           windowOrder: [],
           checkedPaths: []
         }
       },
+      watch: {
+        topics: {
+          handler(newTopics) {
+            this.updateTreeData(newTopics)
+          },
+          immediate: true
+        }
+      },
       methods: {
+        updateTreeData(topics) {
+          const tree = {}
+          topics.forEach(topic => {
+            const parts = topic.split('/')
+            let current = tree
+            parts.forEach(part => {
+              if (!current[part]) {
+                current[part] = { children: {} }
+              }
+              current = current[part].children
+            })
+          })
+          this.treeData = this.convertTreeData(tree)
+        },
+        convertTreeData(tree, parentPath = '') {
+          return Object.keys(tree).map(key => {
+            const fullPath = parentPath ? `${parentPath}/${key}` : key
+            return {
+              id: fullPath,
+              name: key,
+              children: this.convertTreeData(tree[key].children, fullPath)
+            }
+          })
+        },
         updateSelectedPaths(path, checked) {
           const windowId = path
+          const { left, top, width, height } = this.findNewWindowPosition()
           if (checked) {
             if (!this.checkedPaths.includes(path)) {
               this.checkedPaths.push(path)
@@ -420,7 +448,13 @@
             if (existingWindow) {
               this.$refs[`window-${windowId}`][0].toggleMinimize()
             } else {
-              this.windows.push({ id: windowId, title: path, content: `Content for ${path}`, minimized: false })
+              this.windows.push({
+                id: windowId,
+                title: path,
+                content: `Content for ${path}`,
+                minimized: false,
+                position: { left, top, width, height }
+              })
               this.windowOrder.push(windowId)
             }
             this.handleWindowFocus(windowId)
@@ -473,6 +507,72 @@
         },
         maximizeWindow(windowId) {
           this.$refs[`window-${windowId}`][0].toggleMaximize()
+        },
+        findNewWindowPosition() {
+          const margin = 10
+          const defaultWidth = 300
+          const defaultHeight = 200
+          const containerRect = this.$refs.content ? this.$refs.content.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+
+          let left = margin
+          let top = margin
+          let width = defaultWidth
+          let height = defaultHeight
+          let maxAttempts = 100 // Maximum attempts to avoid infinite loop
+
+          while (maxAttempts > 0 && this.windows.some(w => this.isOverlapping(left, top, width, height, w.position))) {
+            left += margin
+            top += margin
+
+            if (left + width > containerRect.width) {
+              left = margin
+            }
+            if (top + height > containerRect.height) {
+              top = margin
+            }
+
+            maxAttempts--
+          }
+
+          // If no suitable position found, choose the one with the least overlap
+          if (maxAttempts === 0) {
+            let minOverlap = Number.MAX_VALUE
+            let bestPosition = { left, top, width, height }
+
+            for (let i = 0; i < containerRect.width - width; i += margin) {
+              for (let j = 0; j < containerRect.height - height; j += margin) {
+                let overlap = this.calculateTotalOverlap(i, j, width, height)
+                if (overlap < minOverlap) {
+                  minOverlap = overlap
+                  bestPosition = { left: i, top: j, width, height }
+                }
+              }
+            }
+
+            return bestPosition
+          }
+
+          return { left, top, width, height }
+        },
+        isOverlapping(left, top, width, height, position) {
+          return !(
+            left + width < position.left ||
+            left > position.left + position.width ||
+            top + height < position.top ||
+            top > position.top + position.height
+          )
+        },
+        calculateTotalOverlap(left, top, width, height) {
+          let totalOverlap = 0
+          this.windows.forEach(w => {
+            totalOverlap += this.calculateOverlap(left, top, width, height, w.position)
+          })
+          return totalOverlap
+        },
+        calculateOverlap(left, top, width, height, position) {
+          const x_overlap = Math.max(0, Math.min(left + width, position.left + position.width) - Math.max(left, position.left))
+          const y_overlap = Math.max(0, Math.min(top + height, position.top + position.height) - Math.max(top, position.top))
+          return x_overlap * y_overlap
         }
       },
       computed: {
@@ -493,8 +593,9 @@
                 v-for="item in treeData" 
                 :key="item.id" 
                 :node="item" 
-                :path="item.name" 
+                :path="item.id" 
                 :checkedPaths="checkedPaths"
+                :topics="topics"
                 @select="updateSelectedPaths" 
               />
             </div>
@@ -508,6 +609,7 @@
               :content="window.content"
               :window-id="window.id"
               :window-z-index="getWindowZIndex(window.id)"
+              :position="window.position"
               @focus="handleWindowFocus"
               @close="closeWindow"
               @minimize="minimizeWindow"
@@ -524,9 +626,9 @@
         return {
           currentTab: 'tab1',
           tabs: [
-            { name: 'tab1', drawerOpen: true, lastDrawerState: true },
-            { name: 'tab2', drawerOpen: false, lastDrawerState: true },
-            { name: 'tab3', drawerOpen: false, lastDrawerState: true }
+            { name: 'tab1', drawerOpen: true, lastDrawerState: true, topics: ['foo/bar', 'foo/dev'] },
+            { name: 'tab2', drawerOpen: false, lastDrawerState: true, topics: ['topic2/subtopic1', 'topic2/subtopic2'] },
+            { name: 'tab3', drawerOpen: false, lastDrawerState: true, topics: ['topic3/subtopic1', 'topic3/subtopic2'] }
           ]
         }
       },
@@ -567,6 +669,7 @@
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
+            :topics="tab.topics"
             v-show="currentTab === tab.name"
           ></dashboard-view>
         </v-app>
@@ -574,4 +677,5 @@
     }).use(vuetify).mount('#app')
   </script>
 </body>
+
 </html>
