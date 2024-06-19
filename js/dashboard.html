@@ -14,14 +14,14 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      overflow: hidden; /* 确保页面不滚动 */
-      height: 100vh; /* 确保 body 占满整个视窗高度 */
+      overflow: hidden;
+      height: 100vh;
     }
 
     #app {
       display: flex;
       flex-direction: column;
-      height: 100vh; /* 确保 #app 占满整个视窗高度 */
+      height: 100vh;
     }
 
     .content {
@@ -30,7 +30,7 @@
       min-height: 100vh;
       margin-top: 48px;
       position: relative;
-      overflow: hidden; /* 确保内容区域不滚动 */
+      overflow: hidden;
     }
 
     .checkbox-label {
@@ -49,8 +49,9 @@
       background: white;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
       resize: both;
-      overflow: hidden; /* Prevents the window itself from scrolling */
+      overflow: hidden;
       border-radius: 8px;
+      min-height: 28px; /* 設置最小高度為標題列的高度 */
     }
 
     .window-title {
@@ -63,12 +64,20 @@
       height: 28px;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      user-select: none; /* 禁止反白 */
+    }
+
+    .window-title-text {
+      flex-grow: 1;
+      text-align: left;
+      padding-left: 8px;
     }
 
     .window-content {
       padding: 8px;
-      overflow: auto; /* Allows the content to scroll */
-      height: calc(100% - 28px); /* Ensures the content area is scrollable without affecting the title bar */
+      overflow: auto;
+      height: calc(100% - 28px);
     }
 
     .drawer-content {
@@ -81,7 +90,6 @@
       display: flex;
       align-items: center;
       gap: 5px;
-      margin-right: 16px;
     }
 
     .window-button {
@@ -204,6 +212,15 @@
         const maximized = ref(false)
         const minimized = ref(false)
         const originalSize = ref({})
+        let minWidth
+
+        const setMinWidth = () => {
+          const titleDiv = windowRef.value.querySelector('.window-title')
+          const buttonsWidth = titleDiv.querySelector('.window-buttons').offsetWidth
+          const titleWidth = titleDiv.querySelector('.window-title-text').offsetWidth
+          minWidth = buttonsWidth + titleWidth + 16
+          windowRef.value.style.minWidth = `${minWidth}px`
+        }
 
         onMounted(() => {
           const el = windowRef.value
@@ -218,7 +235,6 @@
             let newX = initialX + dx
             let newY = initialY + dy
 
-            // Ensure the window doesn't overlap the toolbar or go out of bounds
             const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
             const elRect = el.getBoundingClientRect()
             const toolbarHeight = 48
@@ -246,9 +262,7 @@
             document.removeEventListener('mouseup', onMouseUp)
           }
 
-          el.addEventListener('mousedown', (event) => {
-            if (!event.target.classList.contains('window-title')) return
-
+          el.querySelector('.window-title').addEventListener('mousedown', (event) => {
             startX = event.clientX
             startY = event.clientY
             initialX = el.offsetLeft
@@ -266,18 +280,14 @@
 
           el.ondragstart = () => false
 
-          // Set initial size based on content
+          setMinWidth()
+
           nextTick(() => {
             const contentEl = el.querySelector('.window-content')
             if (contentEl) {
               const contentRect = contentEl.getBoundingClientRect()
-              const titleWidth = el.querySelector('.window-title div').offsetWidth
-              const buttonsWidth = el.querySelector('.window-buttons').offsetWidth
-              const minWidth = titleWidth + buttonsWidth + 32 // Add 12px to the calculated width
-              el.style.width = `${Math.max(contentRect.width + 20, minWidth)}px`
-              el.style.height = `${contentRect.height + 56}px` // 28px for title + 28px padding
-              el.style.minWidth = `${minWidth}px`
-              el.style.minHeight = '28px' // Minimum height to show the title bar
+              el.style.width = `${contentRect.width + 20}px`
+              el.style.height = `${contentRect.height + 56}px`
             }
           })
         })
@@ -382,7 +392,7 @@
               <div class="window-button minimize" @click="minimizeWindow"><i class="fas fa-minus"></i></div>
               <div class="window-button maximize" @click="maximizeWindow"><i class="fas fa-expand"></i></div>
             </div>
-            <div>{{ title }}</div>
+            <div class="window-title-text">{{ title }}</div>
           </div>
           <div class="window-content" v-html="content"></div>
         </div>
@@ -539,7 +549,7 @@
           let top = margin
           let width = defaultWidth
           let height = defaultHeight
-          let maxAttempts = 100 // Maximum attempts to avoid infinite loop
+          let maxAttempts = 100
 
           while (maxAttempts > 0 && this.windows.some(w => this.isOverlapping(left, top, width, height, w.position))) {
             left += margin
@@ -555,7 +565,6 @@
             maxAttempts--
           }
 
-          // If no suitable position found, choose the one with the least overlap
           if (maxAttempts === 0) {
             let minOverlap = Number.MAX_VALUE
             let bestPosition = { left, top, width, height }
