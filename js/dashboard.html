@@ -14,6 +14,14 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
+      overflow: hidden; /* 确保页面不滚动 */
+      height: 100vh; /* 确保 body 占满整个视窗高度 */
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh; /* 确保 #app 占满整个视窗高度 */
     }
 
     .content {
@@ -22,10 +30,7 @@
       min-height: 100vh;
       margin-top: 48px;
       position: relative;
-    }
-
-    .content.drawer-open {
-      margin-left: 256px;
+      overflow: hidden; /* 确保内容区域不滚动 */
     }
 
     .checkbox-label {
@@ -44,7 +49,7 @@
       background: white;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
       resize: both;
-      overflow: hidden;
+      overflow: hidden; /* Prevents the window itself from scrolling */
       border-radius: 8px;
     }
 
@@ -62,8 +67,8 @@
 
     .window-content {
       padding: 8px;
-      overflow: auto;
-      height: calc(100% - 28px); /* Ensure the content area is scrollable without affecting the title bar */
+      overflow: auto; /* Allows the content to scroll */
+      height: calc(100% - 28px); /* Ensures the content area is scrollable without affecting the title bar */
     }
 
     .drawer-content {
@@ -126,6 +131,7 @@
     const { createVuetify, useDisplay } = Vuetify
 
     const vuetify = createVuetify()
+    const DRAWER_WIDTH = 256 // Drawer width constant
 
     const TreeNode = defineComponent({
       name: 'TreeNode',
@@ -190,7 +196,8 @@
         content: String,
         windowId: String,
         windowZIndex: Number,
-        position: Object
+        position: Object,
+        drawerOpen: Boolean
       },
       setup(props, { emit }) {
         const windowRef = ref(null)
@@ -215,12 +222,13 @@
             const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
             const elRect = el.getBoundingClientRect()
             const toolbarHeight = 48
+            const drawerWidth = props.drawerOpen ? DRAWER_WIDTH : 0
 
             if (newY < 0) {
               newY = 0
             }
-            if (newX < 0) {
-              newX = 0
+            if (newX < drawerWidth) {
+              newX = drawerWidth
             }
             if (newX + elRect.width > parentRect.width) {
               newX = parentRect.width - elRect.width
@@ -281,6 +289,7 @@
         const toggleMaximize = () => {
           const el = windowRef.value
           const contentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+          const drawerWidth = props.drawerOpen ? DRAWER_WIDTH : 0
 
           if (maximized.value) {
             el.style.width = originalSize.value.width
@@ -295,9 +304,9 @@
               top: el.style.top
             }
 
-            el.style.width = `${contentRect.width}px`
+            el.style.width = `${contentRect.width - drawerWidth}px`
             el.style.height = `${contentRect.height - 48}px`
-            el.style.left = '0px'
+            el.style.left = `${drawerWidth}px`
             el.style.top = '0px'
           }
 
@@ -417,6 +426,9 @@
             this.updateTreeData(newTopics)
           },
           immediate: true
+        },
+        drawerOpen(newVal, oldVal) {
+          this.adjustWindowPositionsForDrawer(newVal, oldVal)
         }
       },
       methods: {
@@ -520,8 +532,10 @@
           const defaultWidth = 300
           const defaultHeight = 200
           const containerRect = this.$refs.content ? this.$refs.content.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+          const drawerOpen = this.drawerOpen
+          const drawerWidth = drawerOpen ? DRAWER_WIDTH : 0
 
-          let left = margin
+          let left = margin + drawerWidth
           let top = margin
           let width = defaultWidth
           let height = defaultHeight
@@ -532,7 +546,7 @@
             top += margin
 
             if (left + width > containerRect.width) {
-              left = margin
+              left = margin + drawerWidth
             }
             if (top + height > containerRect.height) {
               top = margin
@@ -551,7 +565,7 @@
                 let overlap = this.calculateTotalOverlap(i, j, width, height)
                 if (overlap < minOverlap) {
                   minOverlap = overlap
-                  bestPosition = { left: i, top: j, width, height }
+                  bestPosition = { left: i + drawerWidth, top: j, width, height }
                 }
               }
             }
@@ -560,6 +574,20 @@
           }
 
           return { left, top, width, height }
+        },
+        adjustWindowPositionsForDrawer(newDrawerOpen, oldDrawerOpen) {
+          const drawerWidth = newDrawerOpen ? DRAWER_WIDTH : 0
+          this.windows.forEach(window => {
+            const windowRef = this.$refs[`window-${window.id}`][0]
+            if (windowRef) {
+              if (newDrawerOpen && windowRef.offsetLeft < drawerWidth) {
+                windowRef.style.left = `${drawerWidth}px`
+              }
+              if (!newDrawerOpen && windowRef.offsetLeft < DRAWER_WIDTH) {
+                windowRef.style.left = `${windowRef.offsetLeft - DRAWER_WIDTH}px`
+              }
+            }
+          })
         },
         isOverlapping(left, top, width, height, position) {
           return !(
@@ -617,6 +645,7 @@
               :window-id="window.id"
               :window-z-index="getWindowZIndex(window.id)"
               :position="window.position"
+              :drawer-open="drawerOpen"
               @focus="handleWindowFocus"
               @close="closeWindow"
               @minimize="minimizeWindow"
