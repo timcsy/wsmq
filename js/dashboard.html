@@ -62,6 +62,7 @@
 
     .window-content {
       padding: 8px;
+      overflow: auto;
     }
 
     .drawer-content {
@@ -131,7 +132,7 @@
         node: Object,
         path: String,
         checkedPaths: Array,
-        topics: Array
+        topics: Object
       },
       data() {
         return {
@@ -157,7 +158,7 @@
           this.checked = event.target.checked
         },
         isDisabled(path) {
-          return !this.topics.includes(path)
+          return !this.topics[path]
         }
       },
       template: `
@@ -200,8 +201,6 @@
           const el = windowRef.value
           el.style.left = `${props.position.left}px`
           el.style.top = `${props.position.top}px`
-          el.style.width = `${props.position.width}px`
-          el.style.height = `${props.position.height}px`
 
           let startX, startY, initialX, initialY
 
@@ -258,12 +257,19 @@
 
           el.ondragstart = () => false
 
-          // Set initial size based on title width
+          // Set initial size based on content
           nextTick(() => {
-            const titleWidth = el.querySelector('.window-title').offsetWidth
-            const buttonsWidth = el.querySelector('.window-buttons').offsetWidth
-            el.style.minWidth = `${titleWidth + buttonsWidth + 20}px`
-            el.style.minHeight = '36px'
+            const contentEl = el.querySelector('.window-content')
+            if (contentEl) {
+              const contentRect = contentEl.getBoundingClientRect()
+              const titleWidth = el.querySelector('.window-title div').offsetWidth
+              const buttonsWidth = el.querySelector('.window-buttons').offsetWidth
+              const minWidth = titleWidth + buttonsWidth + 32 // Add 12px to the calculated width
+              el.style.width = `${Math.max(contentRect.width + 20, minWidth)}px`
+              el.style.height = `${contentRect.height + 56}px` // 28px for title + 28px padding
+              el.style.minWidth = `${minWidth}px`
+              el.style.minHeight = '28px' // Minimum height to show the title bar
+            }
           })
         })
 
@@ -368,7 +374,7 @@
             </div>
             <div>{{ title }}</div>
           </div>
-          <div class="window-content">{{ content }}</div>
+          <div class="window-content" v-html="content"></div>
         </div>
       `
     })
@@ -380,7 +386,7 @@
       },
       props: {
         drawerOpen: Boolean,
-        topics: Array
+        topics: Object
       },
       setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
@@ -415,7 +421,7 @@
       methods: {
         updateTreeData(topics) {
           const tree = {}
-          topics.forEach(topic => {
+          Object.keys(topics).forEach(topic => {
             const parts = topic.split('/')
             let current = tree
             parts.forEach(part => {
@@ -451,7 +457,7 @@
               this.windows.push({
                 id: windowId,
                 title: path,
-                content: `Content for ${path}`,
+                content: this.topics[path] || 'No content',
                 minimized: false,
                 position: { left, top, width, height }
               })
@@ -626,9 +632,9 @@
         return {
           currentTab: 'tab1',
           tabs: [
-            { name: 'tab1', drawerOpen: true, lastDrawerState: true, topics: ['foo/bar', 'foo/dev'] },
-            { name: 'tab2', drawerOpen: false, lastDrawerState: true, topics: ['topic2/subtopic1', 'topic2/subtopic2'] },
-            { name: 'tab3', drawerOpen: false, lastDrawerState: true, topics: ['topic3/subtopic1', 'topic3/subtopic2'] }
+            { name: 'tab1', drawerOpen: true, lastDrawerState: true, topics: { 'foo/bar': '<p>Bar Content</p>', 'foo/dev': '<p>Dev Content</p>' } },
+            { name: 'tab2', drawerOpen: false, lastDrawerState: true, topics: { 'topic2/subtopic1': '<p>Subtopic 1 Content</p>', 'topic2/subtopic2': '<p>Subtopic 2 Content</p>' } },
+            { name: 'tab3', drawerOpen: false, lastDrawerState: true, topics: { 'topic3/subtopic1': '<p>Subtopic 1 Content</p>', 'topic3/subtopic2': '<p>Subtopic 2 Content</p>' } }
           ]
         }
       },
