@@ -121,11 +121,17 @@
     .tab-button {
       color: white;
       text-transform: none;
+      display: flex;
+      align-items: center;
     }
 
     .tab-button.active {
       background-color: white;
       color: black;
+    }
+
+    .tab-close {
+      margin-left: 8px;
     }
   </style>
 </head>
@@ -133,6 +139,7 @@
 <body>
   <div id="app"></div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
   <script>
     const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
     const { createVuetify, useDisplay } = Vuetify
@@ -668,11 +675,10 @@
       components: { DashboardView },
       data() {
         return {
-          currentTab: 'tab1',
+          currentTab: 'view1',
+          tabCounter: 1,
           tabs: [
-            { name: 'tab1', drawerOpen: true, lastDrawerState: true, topics: { 'foo/bar': '<p>Bar Content</p>', 'foo/dev': '<p>Dev Content</p>' } },
-            { name: 'tab2', drawerOpen: false, lastDrawerState: true, topics: { 'topic2/subtopic1': '<p>Subtopic 1 Content</p>', 'topic2/subtopic2': '<p>Subtopic 2 Content</p>' } },
-            { name: 'tab3', drawerOpen: false, lastDrawerState: true, topics: { 'topic3/subtopic1': '<p>Subtopic 1 Content</p>', 'topic3/subtopic2': '<p>Subtopic 2 Content</p>' } }
+            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: { 'foo/bar': '<p>Bar Content</p>', 'foo/dev': '<p>Dev Content</p>' } }
           ]
         }
       },
@@ -691,13 +697,40 @@
           const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
           currentTab.drawerOpen = !currentTab.drawerOpen
           currentTab.lastDrawerState = currentTab.drawerOpen
+        },
+        addNewTab() {
+          this.tabCounter++
+          const newTabName = `view${this.tabCounter}`
+          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, topics: {} })
+          this.setCurrentTab(newTabName)
+        },
+        closeTab(tabName) {
+          const tabIdx = this.tabs.findIndex(tab => tab.name === tabName)
+          if (tabIdx > -1) {
+            this.tabs.splice(tabIdx, 1)
+            if (this.currentTab === tabName) {
+              this.currentTab = this.tabs.length ? this.tabs[0].name : ''
+            }
+          }
+        },
+        onDragEnd(evt) {
+          const { oldIndex, newIndex } = evt
+          const movedTab = this.tabs.splice(oldIndex, 1)[0]
+          this.tabs.splice(newIndex, 0, movedTab)
         }
+      },
+      mounted() {
+        const el = this.$refs.tabContainer
+        new Sortable(el, {
+          animation: 150,
+          onEnd: this.onDragEnd
+        })
       },
       template: `
         <v-app>
           <v-app-bar app dense height="48" color="#333">
             <v-app-bar-nav-icon @click="toggleDrawer" style="color: white;"></v-app-bar-nav-icon>
-            <div style="display: flex;">
+            <div ref="tabContainer" style="display: flex; align-items: center;">
               <v-btn
                 v-for="tab in tabs"
                 :key="tab.name"
@@ -705,7 +738,11 @@
                 @click="setCurrentTab(tab.name)"
                 :class="['tab-button', { 'active': currentTab === tab.name }]"
               >
-                {{ tab.name }}
+                {{ tab.name.toUpperCase() }}
+                <v-icon small class="tab-close" @click.stop="closeTab(tab.name)">mdi-close</v-icon>
+              </v-btn>
+              <v-btn icon @click="addNewTab" style="color: white;">
+                <v-icon>mdi-plus</v-icon>
               </v-btn>
             </div>
           </v-app-bar>
