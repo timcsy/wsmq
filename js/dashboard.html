@@ -179,7 +179,7 @@
           this.checked = event.target.checked
         },
         isDisabled(path) {
-          return !this.topics[path]
+          return !this.topics.hasOwnProperty(path)
         }
       },
       template: `
@@ -671,15 +671,16 @@
       `
     })
 
-    createApp({
+    const DashboardApp = defineComponent({
       components: { DashboardView },
       data() {
         return {
           currentTab: 'view1',
           tabCounter: 1,
           tabs: [
-            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: { 'foo/bar': '<p>Bar Content</p>', 'foo/dev': '<p>Dev Content</p>' } }
-          ]
+            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: ['foo/bar', 'foo/dev'] }
+          ],
+          dialog: false
         }
       },
       methods: {
@@ -701,7 +702,7 @@
         addNewTab() {
           this.tabCounter++
           const newTabName = `view${this.tabCounter}`
-          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, topics: {} })
+          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, topics: [] })
           this.setCurrentTab(newTabName)
         },
         closeTab(tabName) {
@@ -717,6 +718,13 @@
           const { oldIndex, newIndex } = evt
           const movedTab = this.tabs.splice(oldIndex, 1)[0]
           this.tabs.splice(newIndex, 0, movedTab)
+        },
+        openDialog() {
+          this.dialog = true
+        },
+        addTopic() {
+          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          currentTab.topics.push('')
         }
       },
       mounted() {
@@ -745,17 +753,43 @@
                 <v-icon>mdi-plus</v-icon>
               </v-btn>
             </div>
+            <v-spacer></v-spacer>
+            <v-btn icon @click="openDialog" style="color: white;">
+              <v-icon>mdi-dots-vertical</v-icon>
+            </v-btn>
           </v-app-bar>
+          <v-dialog v-model="dialog" max-width="500px">
+            <v-card>
+              <v-card-title>Topics</v-card-title>
+              <v-card-text>
+                <v-container>
+                  <v-row v-for="(topic, index) in tabs.find(tab => tab.name === currentTab).topics" :key="index">
+                    <v-col cols="12">
+                      <v-text-field v-model="tabs.find(tab => tab.name === currentTab).topics[index]" label="Topic"></v-text-field>
+                    </v-col>
+                  </v-row>
+                </v-container>
+              </v-card-text>
+              <v-card-actions>
+                <v-btn @click="addTopic">
+                  <v-icon left>mdi-plus</v-icon>
+                  Add Topic
+                </v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
           <dashboard-view
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
-            :topics="tab.topics"
+            :topics="tab.topics.reduce((obj, item) => (obj[item] = '', obj), {})"
             v-show="currentTab === tab.name"
           ></dashboard-view>
         </v-app>
       `
-    }).use(vuetify).mount('#app')
+    })
+
+    createApp(DashboardApp).use(vuetify).mount('#app')
   </script>
 </body>
 
