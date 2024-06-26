@@ -678,7 +678,7 @@
           currentTab: 'view1',
           tabCounter: 1,
           tabs: [
-            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: ['foo/bar', 'foo/dev'] }
+            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: [{ name: 'foo/bar', type: 'text' }, { name: 'foo/dev', type: 'text' }] }
           ],
           dialog: false
         }
@@ -724,7 +724,7 @@
         },
         addTopic() {
           const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
-          currentTab.topics.push('')
+          currentTab.topics.push({ name: '', type: 'text' })
         }
       },
       mounted() {
@@ -764,8 +764,11 @@
               <v-card-text>
                 <v-container>
                   <v-row v-for="(topic, index) in tabs.find(tab => tab.name === currentTab).topics" :key="index">
-                    <v-col cols="12">
-                      <v-text-field v-model="tabs.find(tab => tab.name === currentTab).topics[index]" label="Topic"></v-text-field>
+                    <v-col cols="8">
+                      <v-text-field v-model="tabs.find(tab => tab.name === currentTab).topics[index].name" label="Topic"></v-text-field>
+                    </v-col>
+                    <v-col cols="4">
+                      <v-select v-model="tabs.find(tab => tab.name === currentTab).topics[index].type" :items="['text', 'tensor', 'image']" label="Type"></v-select>
                     </v-col>
                   </v-row>
                 </v-container>
@@ -782,7 +785,7 @@
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
-            :topics="tab.topics.reduce((obj, item) => (obj[item] = '', obj), {})"
+            :topics="Object.fromEntries(tab.topics.map(topic => [topic.name, '']))"
             v-show="currentTab === tab.name"
           ></dashboard-view>
         </v-app>
