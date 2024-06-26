@@ -141,7 +141,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
   <script type="module">
-    const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
+    const { createApp, defineComponent, ref, reactive, onMounted, watch, nextTick } = Vue
     const { createVuetify, useDisplay } = Vuetify
 
     import { ImageStream } from './image_stream.js'
@@ -210,7 +210,6 @@
       name: 'DraggableWindow',
       props: {
         title: String,
-        content: String,
         windowId: String,
         windowZIndex: Number,
         position: Object,
@@ -403,7 +402,7 @@
             </div>
             <div class="window-title-text">{{ title }}</div>
           </div>
-          <div class="window-content" v-html="content"></div>
+          <div class="window-content"></div>
         </div>
       `
     })
@@ -415,7 +414,8 @@
       },
       props: {
         drawerOpen: Boolean,
-        topics: Object
+        topics: Object,
+        messageQueues: Object
       },
       setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
@@ -489,11 +489,36 @@
               this.windows.push({
                 id: windowId,
                 title: path,
-                content: this.topics[path] || 'No content',
                 minimized: false,
                 position: { left, top, width, height }
               })
               this.windowOrder.push(windowId)
+
+              const topicObj = this.topics[path]
+              if (topicObj) {
+                let content
+                switch (topicObj.type) {
+                  case 'text':
+                    content = this.displayText(this.messageQueues.mq, path)
+                    break
+                  case 'tensor':
+                    content = this.displayTensor(this.messageQueues.mq, path)
+                    break
+                  case 'image':
+                    content = this.displayImage(this.messageQueues.stream, path)
+                    break
+                }
+                this.$nextTick(() => {
+                  const windowComponent = this.$refs[`window-${windowId}`]
+                  if (windowComponent && windowComponent.length > 0) {
+                    const windowContent = windowComponent[0].$el.querySelector('.window-content')
+                    if (windowContent) {
+                      windowContent.innerHTML = ''
+                      windowContent.appendChild(content)
+                    }
+                  }
+                })
+              }
             }
             this.handleWindowFocus(windowId)
           } else {
@@ -626,6 +651,25 @@
           const x_overlap = Math.max(0, Math.min(left + width, position.left + position.width) - Math.max(left, position.left))
           const y_overlap = Math.max(0, Math.min(top + height, position.top + position.height) - Math.max(top, position.top))
           return x_overlap * y_overlap
+        },
+        displayText(mq, topic) {
+          const text = document.createElement('div')
+          mq.subscribe(topic, (topic, payload, props) => {
+            text.innerText = payload
+          })
+          return text
+        },
+        displayTensor(mq, topic) {
+          const tensor = document.createElement('div')
+          mq.subscribe(topic, (topic, payload, props) => {
+            tensor.innerHTML = tensorComponent(payload)
+          })
+          return tensor
+        },
+        displayImage(stream, topic) {
+          const canvas = document.createElement('canvas')
+          stream.displayImage(topic, canvas)
+          return canvas
         }
       },
       computed: {
@@ -659,7 +703,6 @@
               :key="window.id"
               :ref="'window-' + window.id"
               :title="window.title"
-              :content="window.content"
               :window-id="window.id"
               :window-z-index="getWindowZIndex(window.id)"
               :position="window.position"
@@ -684,7 +727,11 @@
             { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: [{ name: 'foo/bar', type: 'text' }, { name: 'foo/dev', type: 'text' }] }
           ],
           dialog: false,
-          terminate: true
+          terminate: true,
+          messageQueues: reactive({
+            stream: null,
+            mq: null
+          })
         }
       },
       methods: {
@@ -732,15 +779,15 @@
         },
         async start() {
           this.terminate = false
-          const stream = ref(new ImageStream('ws://localhost:6789', 1))
-          const mq = ref(stream.value.client)
-          await stream.value.start()
+          this.messageQueues.stream = new ImageStream('ws://localhost:6789', 1)
+          this.messageQueues.mq = this.messageQueues.stream.client
+          await this.messageQueues.stream.start()
 
           while (!this.terminate) {
             await new Promise(resolve => setTimeout(resolve, 33))
           }
 
-          await stream.value.stop()
+          await this.messageQueues.stream.stop()
         },
         stop() {
           this.terminate = true
@@ -810,7 +857,8 @@
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
-            :topics="Object.fromEntries(tab.topics.map(topic => [topic.name, '']))"
+            :topics="Object.fromEntries(tab.topics.map(topic => [topic.name, topic]))"
+            :message-queues="messageQueues"
             v-show="currentTab === tab.name"
           ></dashboard-view>
         </v-app>

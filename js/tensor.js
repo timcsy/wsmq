@@ -2,8 +2,14 @@
 const styles = `
   .tensor-table td {
     padding: 5px;
-    word-wrap: break-word;
+    text-align: right;
   }
+
+	.tensor-table td div {
+		display: inline-block;
+		width: 100%;
+	}
+
   .tooltip {
     position: relative;
     display: inline-block;
@@ -117,7 +123,7 @@ function formatValue(value, dtype) {
 
 // Create HTML table to display tensor data
 function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
-  let html = '<table class="tensor-table" style="table-layout: fixed; width: 100%;">'
+  let html = '<table class="tensor-table" style="width: 100%;">'
 
   if (shape.length === 0) {
     const content = formatValue(dataTensor[0], dtype)
@@ -127,9 +133,9 @@ function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
       const b = heatmapTensor[2]
       const color = `rgb(${r},${g},${b})`
       const textColor = getTextColor(r, g, b)
-      html += `<tr><td style="background-color:${color}; color:${textColor}; display: inline-block; padding: 5px;">${content}</td></tr>`
+      html += `<tr><td style="background-color:${color}; color:${textColor}; display: inline-block; padding: 5px;"><div>${content}</div></td></tr>`
     } else {
-      html += `<tr><td style="display: inline-block; padding: 5px;">${content}</td></tr>`
+      html += `<tr><td style="display: inline-block; padding: 5px;"><div>${content}</div></td></tr>`
     }
   } else if (shape.length === 1) {
     html += '<tr>'
@@ -141,9 +147,9 @@ function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
         const b = heatmapTensor[i * 3 + 2]
         const color = `rgb(${r},${g},${b})`
         const textColor = getTextColor(r, g, b)
-        html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${i}]</span></td>`
+        html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${i}]</span></td>`
       } else {
-        html += `<td style="width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${i}]</span></td>`
+        html += `<td style="width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${i}]</span></td>`
       }
     }
     html += '</tr>'
@@ -159,9 +165,9 @@ function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
           const b = heatmapTensor[index * 3 + 2]
           const color = `rgb(${r},${g},${b})`
           const textColor = getTextColor(r, g, b)
-          html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${i},${j}]</span></td>`
+          html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${i},${j}]</span></td>`
         } else {
-          html += `<td style="width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${i},${j}]</span></td>`
+          html += `<td style="width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${i},${j}]</span></td>`
         }
       }
       html += '</tr>'
@@ -170,7 +176,7 @@ function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
     // Handling higher dimensions by slicing and recursively generating tables
     for (let idx = 0; idx < shape[0]; idx++) {
       html += `<div style='font-weight: bold;'>Slice [${idx}, :, :]</div>`
-      html += '<table class="tensor-table" style="table-layout: fixed; width: 100%;">'
+      html += '<table class="tensor-table" style="width: 100%;">'
       for (let i = 0; i < shape[1]; i++) {
         html += '<tr>'
         for (let j = 0; j < shape[2]; j++) {
@@ -182,9 +188,9 @@ function createHtmlTable(dataTensor, heatmapTensor, shape, dtype) {
             const b = heatmapTensor[index * 3 + 2]
             const color = `rgb(${r},${g},${b})`
             const textColor = getTextColor(r, g, b)
-            html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${idx},${i},${j}]</span></td>`
+            html += `<td style="background-color:${color}; color:${textColor}; width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${idx},${i},${j}]</span></td>`
           } else {
-            html += `<td style="width: 50px;" class="tooltip">${content}<span class="tooltiptext">[${idx},${i},${j}]</span></td>`
+            html += `<td style="width: 50px;" class="tooltip"><div>${content}</div><span class="tooltiptext">[${idx},${i},${j}]</span></td>`
           }
         }
         html += '</tr>'
