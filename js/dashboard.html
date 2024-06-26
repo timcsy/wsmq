@@ -140,9 +140,12 @@
   <div id="app"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
-  <script>
+  <script type="module">
     const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
     const { createVuetify, useDisplay } = Vuetify
+
+    import { ImageStream } from './image_stream.js'
+    import { tensorComponent } from './tensor.js'
 
     const vuetify = createVuetify()
     const DRAWER_WIDTH = 256 // Drawer width constant
@@ -680,7 +683,8 @@
           tabs: [
             { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: [{ name: 'foo/bar', type: 'text' }, { name: 'foo/dev', type: 'text' }] }
           ],
-          dialog: false
+          dialog: false,
+          terminate: true
         }
       },
       methods: {
@@ -725,6 +729,21 @@
         addTopic() {
           const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
           currentTab.topics.push({ name: '', type: 'text' })
+        },
+        async start() {
+          this.terminate = false
+          const stream = ref(new ImageStream('ws://localhost:6789', 1))
+          const mq = ref(stream.value.client)
+          await stream.value.start()
+
+          while (!this.terminate) {
+            await new Promise(resolve => setTimeout(resolve, 33))
+          }
+
+          await stream.value.stop()
+        },
+        stop() {
+          this.terminate = true
         }
       },
       mounted() {
@@ -754,6 +773,12 @@
               </v-btn>
             </div>
             <v-spacer></v-spacer>
+            <v-btn v-show="terminate" icon @click="start" style="color: white;">
+              <v-icon>mdi-play</v-icon>
+            </v-btn>
+            <v-btn v-show="!terminate" icon @click="stop" style="color: white;">
+              <v-icon>mdi-stop</v-icon>
+            </v-btn>
             <v-btn icon @click="openDialog" style="color: white;">
               <v-icon>mdi-dots-vertical</v-icon>
             </v-btn>
