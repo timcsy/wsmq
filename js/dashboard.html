@@ -188,12 +188,12 @@
       },
       template: `
         <div>
-          <label class="checkbox-label" v-if="!isRoot">
-            <input type="checkbox" :disabled="isDisabled(path)" v-model="checked" @change="toggleCheckbox">
-            {{ node.name }}
+          <label class="checkbox-label" v-if="isRoot">
+            {{ node.name }} ({{ node.url }})
           </label>
           <label class="checkbox-label" v-else>
-            {{ node.name }} ({{ node.url }})
+            <input type="checkbox" :disabled="isDisabled(path)" v-model="checked" @change="toggleCheckbox">
+            {{ node.name }}
           </label>
           <div v-if="node.children" style="margin-left: 16px;">
             <tree-node 
@@ -541,16 +541,17 @@
               })
             })
           })
-          this.treeData = this.convertTreeData(tree)
+          this.treeData = this.convertTreeData(tree, brokers)
         },
-        convertTreeData(tree, parentPath = '') {
+        convertTreeData(tree, brokers, parentPath = '') {
           return Object.keys(tree).map(key => {
             const fullPath = parentPath ? `${parentPath}/${key}` : key
+            const broker = brokers.find(b => b.name === key)
             return {
               id: fullPath,
               name: key,
-              url: tree[key].url || '',
-              children: this.convertTreeData(tree[key].children, fullPath)
+              url: broker ? broker.url : '',
+              children: this.convertTreeData(tree[key].children, brokers, fullPath)
             }
           })
         },
@@ -797,7 +798,7 @@
                 :path="item.id" 
                 :checkedPaths="checkedPaths"
                 :topics="topics"
-                :is-root="!item.children"
+                :is-root="item.url !== ''"
                 @select="updateSelectedPaths" 
               />
             </div>
@@ -826,38 +827,43 @@
       components: { DashboardView },
       data() {
         return {
-          currentTab: 'view1',
+          currentTab: 1,
           tabCounter: 1,
           tabs: [
-            { name: 'view1', drawerOpen: true, lastDrawerState: true, brokers: [] }
+            { id: 1, name: 'View 1', drawerOpen: true, lastDrawerState: true, brokers: [] }
           ],
-          dialog: false
+          dialog: false,
+          newTabName: '',
+          brokerNameRules: [
+            v => !v.includes('/') || 'Broker name cannot contain "/"',
+          ]
         }
       },
       methods: {
-        setCurrentTab(tabName) {
+        setCurrentTab(tabId) {
           this.tabs.forEach(tab => {
-            if (tab.name === tabName) {
+            if (tab.id === tabId) {
               tab.drawerOpen = tab.lastDrawerState
             } else {
               tab.drawerOpen = false
             }
           })
-          this.currentTab = tabName
+          this.currentTab = tabId
+          this.newTabName = this.tabs.find(tab => tab.id === tabId).name
         },
         toggleDrawer() {
-          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.drawerOpen = !currentTab.drawerOpen
           currentTab.lastDrawerState = currentTab.drawerOpen
         },
         addNewTab() {
           this.tabCounter++
-          const newTabName = `view${this.tabCounter}`
-          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, brokers: [] })
-          this.setCurrentTab(newTabName)
+          const newTab = { id: Date.now(), name: `View ${this.tabCounter}`, drawerOpen: true, lastDrawerState: true, brokers: [] }
+          this.tabs.push(newTab)
+          this.setCurrentTab(newTab.id)
         },
-        async closeTab(tabName) {
-          const tabIdx = this.tabs.findIndex(tab => tab.name === tabName)
+        async closeTab(tabId) {
+          const tabIdx = this.tabs.findIndex(tab => tab.id === tabId)
           if (tabIdx > -1) {
             const tab = this.tabs[tabIdx]
             for (const broker of tab.brokers) {
@@ -866,8 +872,8 @@
               }
             }
             this.tabs.splice(tabIdx, 1)
-            if (this.currentTab === tabName) {
-              this.currentTab = this.tabs.length ? this.tabs[0].name : ''
+            if (this.currentTab === tabId) {
+              this.currentTab = this.tabs.length ? this.tabs[0].id : ''
             }
           }
         },
@@ -878,14 +884,28 @@
         },
         openDialog() {
           this.dialog = true
+          this.newTabName = this.tabs.find(tab => tab.id === this.currentTab).name
         },
         addTopic(brokerIndex) {
-          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers[brokerIndex].topics.push({ name: '', type: 'text' })
         },
         addBroker() {
-          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers.push({ name: '', url: '', topics: [], isRunning: false, imageStream: null, client: null })
+        },
+        renameCurrentTab(event) {
+          const newName = event.target.value.trim()
+          if (newName !== '' && !this.tabs.find(t => t.name === newName)) {
+            const tab = this.tabs.find(tab => tab.id === this.currentTab)
+            if (tab) {
+              tab.name = newName
+            }
+          }
+        },
+        sanitizeBrokerName(event, broker) {
+          const sanitizedValue = event.target.value.replace(/\//g, '')
+          broker.name = sanitizedValue
         }
       },
       mounted() {
@@ -902,18 +922,18 @@
             <div ref="tabContainer" style="display: flex; align-items: center;">
               <v-btn
                 v-for="tab in tabs"
-                :key="tab.name"
+                :key="tab.id"
                 text
-                @click="setCurrentTab(tab.name)"
-                :class="['tab-button', { 'active': currentTab === tab.name }]"
+                @click="setCurrentTab(tab.id)"
+                :class="['tab-button', { 'active': currentTab === tab.id }]"
               >
-                {{ tab.name.toUpperCase() }}
-                <v-icon small class="tab-close" @click.stop="closeTab(tab.name)">mdi-close</v-icon>
-              </v-btn>
-              <v-btn icon @click="addNewTab" style="color: white;">
-                <v-icon>mdi-plus</v-icon>
+                {{ tab.name }}
+                <v-icon small class="tab-close" @click.stop="closeTab(tab.id)">mdi-close</v-icon>
               </v-btn>
             </div>
+            <v-btn icon @click="addNewTab" style="color: white;">
+              <v-icon>mdi-plus</v-icon>
+            </v-btn>
             <v-spacer></v-spacer>
             <v-btn icon @click="openDialog" style="color: white;">
               <v-icon>mdi-dots-vertical</v-icon>
@@ -921,12 +941,26 @@
           </v-app-bar>
           <v-dialog v-model="dialog" max-width="500px">
             <v-card>
-              <v-card-title>Brokers and Topics</v-card-title>
+              <v-card-title>Dashboard Settings</v-card-title>
               <v-card-text>
                 <v-container>
-                  <v-row v-for="(broker, index) in tabs.find(tab => tab.name === currentTab).brokers" :key="index">
+                  <v-row>
                     <v-col cols="12">
-                      <v-text-field v-model="broker.name" label="Broker Name"></v-text-field>
+                      <v-text-field
+                        v-model="newTabName"
+                        label="Rename Tab"
+                        @input="renameCurrentTab"
+                      ></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-row v-for="(broker, index) in tabs.find(tab => tab.id === currentTab).brokers" :key="index">
+                    <v-col cols="12">
+                      <v-text-field 
+                        v-model="broker.name" 
+                        label="Broker Name" 
+                        :rules="brokerNameRules"
+                        @input="sanitizeBrokerName($event, broker)"
+                      ></v-text-field>
                       <v-text-field v-model="broker.url" label="Broker URL"></v-text-field>
                     </v-col>
                     <v-col cols="12" v-for="(topic, tIndex) in broker.topics" :key="tIndex">
@@ -953,10 +987,10 @@
           </v-dialog>
           <dashboard-view
             v-for="tab in tabs"
-            :key="tab.name"
+            :key="tab.id"
             :drawer-open="tab.drawerOpen"
             :brokers="tab.brokers"
-            v-show="currentTab === tab.name"
+            v-show="currentTab === tab.id"
           ></dashboard-view>
         </v-app>
       `
