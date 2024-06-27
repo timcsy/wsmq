@@ -51,7 +51,7 @@
       resize: both;
       overflow: hidden;
       border-radius: 8px;
-      min-height: 28px; /* 設置最小高度為標題列的高度 */
+      min-height: 28px;
     }
 
     .window-title {
@@ -141,7 +141,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
   <script type="module">
-    const { createApp, defineComponent, ref, reactive, onMounted, watch, nextTick } = Vue
+    const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
     const { createVuetify, useDisplay } = Vuetify
 
     import { ImageStream } from './image_stream.js'
@@ -156,7 +156,8 @@
         node: Object,
         path: String,
         checkedPaths: Array,
-        topics: Object
+        topics: Object,
+        isRoot: Boolean
       },
       data() {
         return {
@@ -187,9 +188,12 @@
       },
       template: `
         <div>
-          <label class="checkbox-label">
+          <label class="checkbox-label" v-if="!isRoot">
             <input type="checkbox" :disabled="isDisabled(path)" v-model="checked" @change="toggleCheckbox">
             {{ node.name }}
+          </label>
+          <label class="checkbox-label" v-else>
+            {{ node.name }} ({{ node.url }})
           </label>
           <div v-if="node.children" style="margin-left: 16px;">
             <tree-node 
@@ -199,6 +203,7 @@
               :path="path + '/' + child.name" 
               :checkedPaths="checkedPaths"
               :topics="topics"
+              :is-root="false"
               @select="handleChildSelect" 
             />
           </div>
@@ -485,7 +490,7 @@
       props: {
         drawerOpen: Boolean,
         topics: Object,
-        messageQueues: Object
+        brokers: Array
       },
       setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
@@ -541,63 +546,97 @@
             return {
               id: fullPath,
               name: key,
+              url: tree[key].url || '',
               children: this.convertTreeData(tree[key].children, fullPath)
             }
           })
         },
-        updateSelectedPaths(path, checked) {
-          const windowId = path
-          const { left, top, width, height } = this.findNewWindowPosition()
-          if (checked) {
-            if (!this.checkedPaths.includes(path)) {
-              this.checkedPaths.push(path)
-            }
-            const existingWindow = this.windows.find(w => w.id === windowId)
-            if (existingWindow) {
-              this.$refs[`window-${windowId}`][0].toggleMinimize()
-            } else {
-              this.windows.push({
-                id: windowId,
-                title: path,
-                minimized: false,
-                position: { left, top, width, height }
-              })
-              this.windowOrder.push(windowId)
+        async updateSelectedPaths(path, checked) {
+          const parts = path.split('/')
+          const brokerAlias = parts[0]
+          const topic = parts.slice(1).join('/')
+          const broker = this.brokers.find(b => b.name === brokerAlias)
+          if (broker) {
+            if (checked) {
+              if (!broker.isRunning) {
+                broker.imageStream = new ImageStream(broker.url, 1)
+                broker.client = broker.imageStream.client
+                await broker.imageStream.start()
+                broker.isRunning = true
+              }
+              const { left, top, width, height } = this.findNewWindowPosition()
+              if (!this.checkedPaths.includes(path)) {
+                this.checkedPaths.push(path)
+              }
+              const existingWindow = this.windows.find(w => w.id === path)
+              if (existingWindow) {
+                this.$refs[`window-${path}`][0].toggleMinimize()
+              } else {
+                this.windows.push({
+                  id: path,
+                  title: path,
+                  brokerUrl: broker.url,
+                  minimized: false,
+                  position: { left, top, width, height }
+                })
+                this.windowOrder.push(path)
 
-              const topicObj = this.topics[path]
-              if (topicObj) {
-                let content
-                switch (topicObj.type) {
-                  case 'text':
-                    content = this.displayText(this.messageQueues.mq, path)
-                    break
-                  case 'tensor':
-                    content = this.displayTensor(this.messageQueues.mq, path)
-                    break
-                  case 'image':
-                    content = this.displayImage(this.messageQueues.stream, path)
-                    break
-                }
                 this.$nextTick(() => {
-                  const windowComponent = this.$refs[`window-${windowId}`]
+                  const windowComponent = this.$refs[`window-${path}`]
                   if (windowComponent && windowComponent.length > 0) {
                     const windowContent = windowComponent[0].$el.querySelector('.window-content')
                     if (windowContent) {
                       windowContent.innerHTML = ''
-                      windowContent.appendChild(content)
+                      const topicObj = broker.topics.find(t => t.name === topic)
+                      if (topicObj) {
+                        windowContent.appendChild(this.displayContent(broker, topicObj))
+                      }
                     }
                   }
                 })
               }
-            }
-            this.handleWindowFocus(windowId)
-          } else {
-            this.checkedPaths = this.checkedPaths.filter(p => p !== path)
-            const windowToMinimize = this.$refs[`window-${windowId}`][0]
-            if (windowToMinimize) {
-              windowToMinimize.toggleMinimize()
+              this.handleWindowFocus(path)
+            } else {
+              this.checkedPaths = this.checkedPaths.filter(p => p !== path)
+              const windowToMinimize = this.$refs[`window-${path}`][0]
+              if (windowToMinimize) {
+                windowToMinimize.toggleMinimize()
+              }
             }
           }
+        },
+        displayContent(broker, topic) {
+          if (topic.type === 'text') {
+            return this.displayText(broker.client, topic.name)
+          } else if (topic.type === 'tensor') {
+            return this.displayTensor(broker.client, topic.name)
+          } else if (topic.type === 'image') {
+            return this.displayImage(broker.imageStream, topic.name)
+          }
+          return this.displayText(broker.client, topic.name)
+        },
+        displayText(mq, topic) {
+          const text = document.createElement('div')
+          text.style.display = `inline-block`
+          text.style.whiteSpace = `nowrap`
+          mq.subscribe(topic, (topic, payload, props) => {
+            text.innerText = payload
+          })
+          return text
+        },
+        displayTensor(mq, topic) {
+          const tensor = document.createElement('div')
+          tensor.style.display = `inline-block`
+          tensor.style.whiteSpace = `nowrap`
+          mq.subscribe(topic, (topic, payload, props) => {
+            tensor.innerHTML = tensorComponent(payload)
+          })
+          return tensor
+        },
+        displayImage(stream, topic) {
+          const canvas = document.createElement('canvas')
+          stream.displayImage(topic, canvas)
+          return canvas
         },
         getNodePath(node) {
           const path = []
@@ -629,7 +668,15 @@
         getWindowZIndex(windowId) {
           return this.windowOrder.indexOf(windowId) + 1000
         },
-        closeWindow(windowId) {
+        async closeWindow(windowId) {
+          const currentWindow = this.windows.find(w => w.id === windowId)
+          if (currentWindow) {
+            const broker = this.brokers.find(b => b.url === currentWindow.brokerUrl)
+            if (broker && broker.client) {
+              const topic = windowId.split('/').slice(1).join('/')
+              broker.client.unsubscribe(topic)
+            }
+          }
           this.windows = this.windows.filter(w => w.id !== windowId)
           this.windowOrder = this.windowOrder.filter(id => id !== windowId)
           this.checkedPaths = this.checkedPaths.filter(path => path !== windowId)
@@ -721,29 +768,6 @@
           const x_overlap = Math.max(0, Math.min(left + width, position.left + position.width) - Math.max(left, position.left))
           const y_overlap = Math.max(0, Math.min(top + height, position.top + position.height) - Math.max(top, position.top))
           return x_overlap * y_overlap
-        },
-        displayText(mq, topic) {
-          const text = document.createElement('div')
-          text.style.display = `inline-block`
-          text.style.whiteSpace = `nowrap`
-          mq.subscribe(topic, (topic, payload, props) => {
-            text.innerText = payload
-          })
-          return text
-        },
-        displayTensor(mq, topic) {
-          const tensor = document.createElement('div')
-          tensor.style.display = `inline-block`
-          tensor.style.whiteSpace = `nowrap`
-          mq.subscribe(topic, (topic, payload, props) => {
-            tensor.innerHTML = tensorComponent(payload)
-          })
-          return tensor
-        },
-        displayImage(stream, topic) {
-          const canvas = document.createElement('canvas')
-          stream.displayImage(topic, canvas)
-          return canvas
         }
       },
       computed: {
@@ -767,6 +791,7 @@
                 :path="item.id" 
                 :checkedPaths="checkedPaths"
                 :topics="topics"
+                :is-root="!item.children"
                 @select="updateSelectedPaths" 
               />
             </div>
@@ -798,14 +823,9 @@
           currentTab: 'view1',
           tabCounter: 1,
           tabs: [
-            { name: 'view1', drawerOpen: true, lastDrawerState: true, topics: [{ name: 'foo/bar', type: 'text' }, { name: 'foo/dev', type: 'text' }] }
+            { name: 'view1', drawerOpen: true, lastDrawerState: true, brokers: [] }
           ],
-          dialog: false,
-          terminate: true,
-          messageQueues: reactive({
-            stream: null,
-            mq: null
-          })
+          dialog: false
         }
       },
       methods: {
@@ -827,7 +847,7 @@
         addNewTab() {
           this.tabCounter++
           const newTabName = `view${this.tabCounter}`
-          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, topics: [] })
+          this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, brokers: [] })
           this.setCurrentTab(newTabName)
         },
         closeTab(tabName) {
@@ -847,24 +867,13 @@
         openDialog() {
           this.dialog = true
         },
-        addTopic() {
+        addTopic(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
-          currentTab.topics.push({ name: '', type: 'text' })
+          currentTab.brokers[brokerIndex].topics.push({ name: '', type: 'text' })
         },
-        async start() {
-          this.terminate = false
-          this.messageQueues.stream = new ImageStream('ws://localhost:6789', 1)
-          this.messageQueues.mq = this.messageQueues.stream.client
-          await this.messageQueues.stream.start()
-
-          while (!this.terminate) {
-            await new Promise(resolve => setTimeout(resolve, 33))
-          }
-
-          await this.messageQueues.stream.stop()
-        },
-        stop() {
-          this.terminate = true
+        addBroker() {
+          const currentTab = this.tabs.find(tab => tab.name === this.currentTab)
+          currentTab.brokers.push({ name: '', url: '', topics: [], isRunning: false, imageStream: null, client: null })
         }
       },
       mounted() {
@@ -894,35 +903,38 @@
               </v-btn>
             </div>
             <v-spacer></v-spacer>
-            <v-btn v-show="terminate" icon @click="start" style="color: white;">
-              <v-icon>mdi-play</v-icon>
-            </v-btn>
-            <v-btn v-show="!terminate" icon @click="stop" style="color: white;">
-              <v-icon>mdi-stop</v-icon>
-            </v-btn>
             <v-btn icon @click="openDialog" style="color: white;">
               <v-icon>mdi-dots-vertical</v-icon>
             </v-btn>
           </v-app-bar>
           <v-dialog v-model="dialog" max-width="500px">
             <v-card>
-              <v-card-title>Topics</v-card-title>
+              <v-card-title>Brokers and Topics</v-card-title>
               <v-card-text>
                 <v-container>
-                  <v-row v-for="(topic, index) in tabs.find(tab => tab.name === currentTab).topics" :key="index">
-                    <v-col cols="8">
-                      <v-text-field v-model="tabs.find(tab => tab.name === currentTab).topics[index].name" label="Topic"></v-text-field>
+                  <v-row v-for="(broker, index) in tabs.find(tab => tab.name === currentTab).brokers" :key="index">
+                    <v-col cols="12">
+                      <v-text-field v-model="broker.name" label="Broker Name"></v-text-field>
+                      <v-text-field v-model="broker.url" label="Broker URL"></v-text-field>
                     </v-col>
-                    <v-col cols="4">
-                      <v-select v-model="tabs.find(tab => tab.name === currentTab).topics[index].type" :items="['text', 'tensor', 'image']" label="Type"></v-select>
+                    <v-col cols="12" v-for="(topic, tIndex) in broker.topics" :key="tIndex">
+                      <v-row>
+                        <v-col cols="8">
+                          <v-text-field v-model="broker.topics[tIndex].name" label="Topic"></v-text-field>
+                        </v-col>
+                        <v-col cols="4">
+                          <v-select v-model="broker.topics[tIndex].type" :items="['text', 'tensor', 'image']" label="Type"></v-select>
+                        </v-col>
+                      </v-row>
                     </v-col>
+                    <v-btn @click="addTopic(index)">Add Topic</v-btn>
                   </v-row>
                 </v-container>
               </v-card-text>
               <v-card-actions>
-                <v-btn @click="addTopic">
+                <v-btn @click="addBroker">
                   <v-icon left>mdi-plus</v-icon>
-                  Add Topic
+                  Add Broker
                 </v-btn>
               </v-card-actions>
             </v-card>
@@ -931,8 +943,8 @@
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
-            :topics="Object.fromEntries(tab.topics.map(topic => [topic.name, topic]))"
-            :message-queues="messageQueues"
+            :topics="Object.fromEntries(tab.brokers.flatMap(broker => broker.topics.map(topic => [broker.name + '/' + topic.name, topic])))"
+            :brokers="tab.brokers"
             v-show="currentTab === tab.name"
           ></dashboard-view>
         </v-app>
