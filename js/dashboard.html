@@ -216,11 +216,13 @@
         drawerOpen: Boolean
       },
       setup(props, { emit }) {
+        const isManuallyResized = ref(false)
         const windowRef = ref(null)
         const maximized = ref(false)
         const minimized = ref(false)
         const originalSize = ref({})
         let minWidth
+        let hasMousedown
 
         const setMinWidth = () => {
           const titleDiv = windowRef.value.querySelector('.window-title')
@@ -283,6 +285,7 @@
           })
 
           el.addEventListener('mousedown', () => {
+            hasMousedown = true
             emit('focus', props.windowId)
           })
 
@@ -305,6 +308,7 @@
         })
 
         const toggleMaximize = () => {
+          isManuallyResized.value = true
           const el = windowRef.value
           const contentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
           const drawerWidth = props.drawerOpen ? DRAWER_WIDTH : 0
@@ -353,7 +357,8 @@
           emit('focus', props.windowId)
         }
 
-        const onResize = (entries) => {
+        const onWindowResize = (entries) => {
+          if (hasMousedown) isManuallyResized.value = true
           for (let entry of entries) {
             const el = entry.target
             const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
@@ -363,21 +368,84 @@
               el.style.height = `${parentRect.height - toolbarHeight - el.offsetTop}px`
             }
           }
+          hasMousedown = false
         }
 
-        const resizeObserver = new ResizeObserver(onResize)
+        const onContentResize = (entries) => {
+          for (let entry of entries) {
+            const contentEl = entry.target // window content
+            const el = contentEl.parentElement // whole
+            const contentSize = contentEl.getBoundingClientRect() // content of window (width - 2, height - 28{title height} - 2)
+            const innerSize = entry.contentRect
+            let contentWidth = contentSize.width
+            let contentHeight = contentSize.height
+            const paddingX = contentWidth - innerSize.width
+            const paddingY = contentHeight - innerSize.height
+            const canvas = el.querySelector('canvas')
+
+            if (!isManuallyResized.value) {
+              if (canvas) {
+                contentWidth = canvas.width
+                contentHeight = canvas.height
+              }
+
+              // Ensure the new dimensions do not exceed parent boundaries
+              let newWidth = contentWidth + paddingX + 2
+              let newHeight = contentHeight + paddingY + 28 + 2
+              const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+              const toolbarHeight = 48
+              const drawerWidth = props.drawerOpen ? DRAWER_WIDTH : 0
+              if (el.offsetTop + newHeight > parentRect.height - toolbarHeight) {
+                newHeight = parentRect.height - toolbarHeight - el.offsetTop
+              }
+              if (el.offsetLeft + newWidth > parentRect.width - drawerWidth) {
+                newWidth = parentRect.width - drawerWidth - el.offsetLeft
+              }
+              el.style.width = `${newWidth}px`
+              el.style.height = `${newHeight}px`
+            } else {
+              if (canvas) {
+                const scaleFactor = Math.min(innerSize.width / canvas.width, innerSize.height / canvas.height)
+                canvas.style.width = `${canvas.width * scaleFactor}px`
+                canvas.style.height = `${canvas.height * scaleFactor}px`
+              }
+            }
+          }
+        }
+
+        const windowResizeObserver = new ResizeObserver(onWindowResize)
+        const contentResizeObserver = new ResizeObserver(onContentResize)
+
+        const mutationObserver = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            // Force a resize calculation when content changes
+            let contentEl = mutation.target
+            while (contentEl && contentEl.className !== 'window-content') {
+              contentEl = contentEl.parentElement
+            }
+            if (contentEl) {
+              contentResizeObserver.unobserve(contentEl)
+              contentResizeObserver.observe(contentEl)
+            }
+          })
+        })
 
         onMounted(() => {
           const el = windowRef.value
-          resizeObserver.observe(el)
+          windowResizeObserver.observe(el)
+          const contentEl = el.querySelector('.window-content')
+          if (contentEl) {
+            contentResizeObserver.observe(contentEl)
+            mutationObserver.observe(contentEl, { attributes: true, childList: true, subtree: true, characterData: true })
+          }
         })
 
         return {
+          isManuallyResized,
           windowRef,
           toggleMaximize,
           toggleMinimize,
-          minimized,
-          onResize
+          minimized
         }
       },
       methods: {
