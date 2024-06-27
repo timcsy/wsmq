@@ -833,10 +833,7 @@
             { id: 1, name: 'View 1', drawerOpen: true, lastDrawerState: true, brokers: [] }
           ],
           dialog: false,
-          newTabName: '',
-          brokerNameRules: [
-            v => !v.includes('/') || 'Broker name cannot contain "/"',
-          ]
+          newTabName: ''
         }
       },
       methods: {
@@ -877,11 +874,6 @@
             }
           }
         },
-        onDragEnd(evt) {
-          const { oldIndex, newIndex } = evt
-          const movedTab = this.tabs.splice(oldIndex, 1)[0]
-          this.tabs.splice(newIndex, 0, movedTab)
-        },
         openDialog() {
           this.dialog = true
           this.newTabName = this.tabs.find(tab => tab.id === this.currentTab).name
@@ -903,16 +895,68 @@
             }
           }
         },
-        sanitizeBrokerName(event, broker) {
-          const sanitizedValue = event.target.value.replace(/\//g, '')
-          broker.name = sanitizedValue
+        // Move broker up
+        moveBrokerUp(brokerIndex) {
+          if (brokerIndex > 0) {
+            const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+            const temp = currentTab.brokers[brokerIndex]
+            currentTab.brokers[brokerIndex] = currentTab.brokers[brokerIndex - 1]
+            currentTab.brokers[brokerIndex - 1] = temp
+          }
+        },
+        // Move broker down
+        moveBrokerDown(brokerIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          if (brokerIndex < currentTab.brokers.length - 1) {
+            const temp = currentTab.brokers[brokerIndex]
+            currentTab.brokers[brokerIndex] = currentTab.brokers[brokerIndex + 1]
+            currentTab.brokers[brokerIndex + 1] = temp
+          }
+        },
+        // Move topic up
+        moveTopicUp(brokerIndex, topicIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const broker = currentTab.brokers[brokerIndex]
+          if (topicIndex > 0) {
+            const temp = broker.topics[topicIndex]
+            broker.topics[topicIndex] = broker.topics[topicIndex - 1]
+            broker.topics[topicIndex - 1] = temp
+          }
+        },
+        // Move topic down
+        moveTopicDown(brokerIndex, topicIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const broker = currentTab.brokers[brokerIndex]
+          if (topicIndex < broker.topics.length - 1) {
+            const temp = broker.topics[topicIndex]
+            broker.topics[topicIndex] = broker.topics[topicIndex + 1]
+            broker.topics[topicIndex + 1] = temp
+          }
+        },
+        // Check for / character in broker name
+        validateBrokerName(brokerIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const broker = currentTab.brokers[brokerIndex]
+          if (broker.name.includes('/')) {
+            broker.name = broker.name.replace(/\//g, '')
+          }
+        },
+        // Delete broker
+        deleteBroker(brokerIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          currentTab.brokers.splice(brokerIndex, 1)
+        },
+        // Delete topic
+        deleteTopic(brokerIndex, topicIndex) {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const broker = currentTab.brokers[brokerIndex]
+          broker.topics.splice(topicIndex, 1)
         }
       },
       mounted() {
         const el = this.$refs.tabContainer
         new Sortable(el, {
-          animation: 150,
-          onEnd: this.onDragEnd
+          animation: 150
         })
       },
       template: `
@@ -939,9 +983,9 @@
               <v-icon>mdi-dots-vertical</v-icon>
             </v-btn>
           </v-app-bar>
-          <v-dialog v-model="dialog" max-width="500px">
+          <v-dialog v-model="dialog" max-width="800px">
             <v-card>
-              <v-card-title>Dashboard Settings</v-card-title>
+              <v-card-title>View Settings</v-card-title>
               <v-card-text>
                 <v-container>
                   <v-row>
@@ -955,31 +999,62 @@
                   </v-row>
                   <v-row v-for="(broker, index) in tabs.find(tab => tab.id === currentTab).brokers" :key="index">
                     <v-col cols="12">
-                      <v-text-field 
-                        v-model="broker.name" 
-                        label="Broker Name" 
-                        :rules="brokerNameRules"
-                        @input="sanitizeBrokerName($event, broker)"
-                      ></v-text-field>
-                      <v-text-field v-model="broker.url" label="Broker URL"></v-text-field>
-                    </v-col>
-                    <v-col cols="12" v-for="(topic, tIndex) in broker.topics" :key="tIndex">
-                      <v-row>
+                      <v-row align="center">
                         <v-col cols="8">
+                          <v-text-field
+                            v-model="broker.name"
+                            label="Broker Name"
+                            :rules="[v => v && !v.includes('/') || 'Broker name cannot contain /']"
+                            @input="validateBrokerName(index)"
+                          ></v-text-field>
+                          <v-text-field v-model="broker.url" label="Broker URL"></v-text-field>
+                        </v-col>
+                        <v-col cols="4" class="topic-actions" style="text-align: right;">
+                          <v-btn icon @click="moveBrokerUp(index)" variant="plain">
+                            <v-icon>mdi-arrow-up</v-icon>
+                          </v-btn>
+                          <v-btn icon @click="moveBrokerDown(index)" variant="plain">
+                            <v-icon>mdi-arrow-down</v-icon>
+                          </v-btn>
+                          <v-btn icon @click="deleteBroker(index)" variant="plain">
+                            <v-icon>mdi-delete</v-icon>
+                          </v-btn>
+                        </v-col>
+                      </v-row>
+                      <v-row v-for="(topic, tIndex) in broker.topics" :key="tIndex" align="center">
+                        <v-col cols="6">
                           <v-text-field v-model="broker.topics[tIndex].name" label="Topic"></v-text-field>
                         </v-col>
-                        <v-col cols="4">
+                        <v-col cols="3">
                           <v-select v-model="broker.topics[tIndex].type" :items="['text', 'tensor', 'image']" label="Type"></v-select>
+                        </v-col>
+                        <v-col cols="3" class="topic-actions">
+                          <v-btn icon @click="moveTopicUp(index, tIndex)" variant="plain">
+                            <v-icon>mdi-arrow-up</v-icon>
+                          </v-btn>
+                          <v-btn icon @click="moveTopicDown(index, tIndex)" variant="plain">
+                            <v-icon>mdi-arrow-down</v-icon>
+                          </v-btn>
+                          <v-btn icon @click="deleteTopic(index, tIndex)" variant="plain">
+                            <v-icon>mdi-delete</v-icon>
+                          </v-btn>
+                        </v-col>
+                      </v-row>
+                      <v-row>
+                        <v-col cols="12">
+                          <v-btn @click="addTopic(index)">
+                            <v-icon>mdi-plus</v-icon>
+                            Add Topic
+                          </v-btn>
                         </v-col>
                       </v-row>
                     </v-col>
-                    <v-btn @click="addTopic(index)">Add Topic</v-btn>
                   </v-row>
                 </v-container>
               </v-card-text>
               <v-card-actions>
                 <v-btn @click="addBroker">
-                  <v-icon left>mdi-plus</v-icon>
+                  <v-icon>mdi-plus</v-icon>
                   Add Broker
                 </v-btn>
               </v-card-actions>
