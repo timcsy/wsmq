@@ -375,23 +375,23 @@
           for (let entry of entries) {
             const contentEl = entry.target // window content
             const el = contentEl.parentElement // whole
-            const contentSize = contentEl.getBoundingClientRect() // content of window (width - 2, height - 28{title height} - 2)
-            const innerSize = entry.contentRect
-            let contentWidth = contentSize.width
-            let contentHeight = contentSize.height
-            const paddingX = contentWidth - innerSize.width
-            const paddingY = contentHeight - innerSize.height
-            const canvas = el.querySelector('canvas')
 
             if (!isManuallyResized.value) {
-              if (canvas) {
-                contentWidth = canvas.width
-                contentHeight = canvas.height
-              }
+              const contentChildren = Array.from(contentEl.children)
+              // Initialize width and height
+              let contentWidth = 0
+              let contentHeight = 0
+              // Iterate through all child elements to calculate total width and height
+              contentChildren.forEach(child => {
+                const childRect = child.getBoundingClientRect()
+                contentWidth = Math.max(contentWidth, childRect.right - contentEl.getBoundingClientRect().left)
+                contentHeight = Math.max(contentHeight, childRect.bottom - contentEl.getBoundingClientRect().top)
+              })
 
               // Ensure the new dimensions do not exceed parent boundaries
-              let newWidth = contentWidth + paddingX + 2
-              let newHeight = contentHeight + paddingY + 28 + 2
+              const padding = 8
+              let newWidth = contentWidth + padding + 2 // 2: border line
+              let newHeight = contentHeight + padding + 28 + 2 // 28: title height, 2: border line
               const parentRect = el.parentElement ? el.parentElement.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
               const toolbarHeight = 48
               const drawerWidth = props.drawerOpen ? DRAWER_WIDTH : 0
@@ -404,7 +404,9 @@
               el.style.width = `${newWidth}px`
               el.style.height = `${newHeight}px`
             } else {
+              const canvas = el.querySelector('canvas')
               if (canvas) {
+                const innerSize = entry.contentRect
                 const scaleFactor = Math.min(innerSize.width / canvas.width, innerSize.height / canvas.height)
                 canvas.style.width = `${canvas.width * scaleFactor}px`
                 canvas.style.height = `${canvas.height * scaleFactor}px`
@@ -722,6 +724,8 @@
         },
         displayText(mq, topic) {
           const text = document.createElement('div')
+          text.style.display = `inline-block`
+          text.style.whiteSpace = `nowrap`
           mq.subscribe(topic, (topic, payload, props) => {
             text.innerText = payload
           })
@@ -729,6 +733,8 @@
         },
         displayTensor(mq, topic) {
           const tensor = document.createElement('div')
+          tensor.style.display = `inline-block`
+          tensor.style.whiteSpace = `nowrap`
           mq.subscribe(topic, (topic, payload, props) => {
             tensor.innerHTML = tensorComponent(payload)
           })
