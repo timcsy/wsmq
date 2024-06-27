@@ -489,7 +489,6 @@
       },
       props: {
         drawerOpen: Boolean,
-        topics: Object,
         brokers: Array
       },
       setup(props) {
@@ -515,10 +514,11 @@
         }
       },
       watch: {
-        topics: {
-          handler(newTopics) {
-            this.updateTreeData(newTopics)
+        brokers: {
+          handler(newBrokers) {
+            this.updateTreeData(newBrokers)
           },
+          deep: true,
           immediate: true
         },
         drawerOpen(newVal, oldVal) {
@@ -526,16 +526,19 @@
         }
       },
       methods: {
-        updateTreeData(topics) {
+        updateTreeData(brokers) {
           const tree = {}
-          Object.keys(topics).forEach(topic => {
-            const parts = topic.split('/')
-            let current = tree
-            parts.forEach(part => {
-              if (!current[part]) {
-                current[part] = { children: {} }
-              }
-              current = current[part].children
+          brokers.forEach(broker => {
+            broker.topics.forEach(topic => {
+              const topicPath = `${broker.name}/${topic.name}`
+              const parts = topicPath.split('/')
+              let current = tree
+              parts.forEach(part => {
+                if (!current[part]) {
+                  current[part] = { children: {} }
+                }
+                current = current[part].children
+              })
             })
           })
           this.treeData = this.convertTreeData(tree)
@@ -775,6 +778,9 @@
           return {
             'drawer-open': this.mdAndUp && this.drawerOpen
           }
+        },
+        topics() {
+          return Object.fromEntries(this.brokers.flatMap(broker => broker.topics.map(topic => [`${broker.name}/${topic.name}`, topic])))
         }
       },
       template: `
@@ -850,9 +856,15 @@
           this.tabs.push({ name: newTabName, drawerOpen: true, lastDrawerState: true, brokers: [] })
           this.setCurrentTab(newTabName)
         },
-        closeTab(tabName) {
+        async closeTab(tabName) {
           const tabIdx = this.tabs.findIndex(tab => tab.name === tabName)
           if (tabIdx > -1) {
+            const tab = this.tabs[tabIdx]
+            for (const broker of tab.brokers) {
+              if (broker.imageStream) {
+                await broker.imageStream.stop()
+              }
+            }
             this.tabs.splice(tabIdx, 1)
             if (this.currentTab === tabName) {
               this.currentTab = this.tabs.length ? this.tabs[0].name : ''
@@ -943,7 +955,6 @@
             v-for="tab in tabs"
             :key="tab.name"
             :drawer-open="tab.drawerOpen"
-            :topics="Object.fromEntries(tab.brokers.flatMap(broker => broker.topics.map(topic => [broker.name + '/' + topic.name, topic])))"
             :brokers="tab.brokers"
             v-show="currentTab === tab.name"
           ></dashboard-view>
