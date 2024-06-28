@@ -945,50 +945,64 @@
           const broker = currentTab.brokers[brokerIndex]
           broker.topics.splice(topicIndex, 1)
         },
-        exportView() {
-          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
-          const { id, drawerOpen, lastDrawerState, ...exportTab } = currentTab
-          exportTab.brokers = exportTab.brokers.map(broker => {
-            const { isRunning, imageStream, client, ...exportBroker } = broker
-            return exportBroker
-          })
-          const dataStr = JSON.stringify(exportTab, null, 2)  // Add null and 2 for pretty-printing
-          const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
-
-          const exportFileDefaultName = `${currentTab.name}.json`
-
-          const linkElement = document.createElement('a')
-          linkElement.setAttribute('href', dataUri)
-          linkElement.setAttribute('download', exportFileDefaultName)
-          linkElement.click()
-        },
-        importView(event) {
+        async importView(event) {
           const file = event.target.files[0]
-          if (!file) return
-
-          const reader = new FileReader()
-          reader.onload = (e) => {
-            const content = e.target.result
-            try {
-              const importedTab = JSON.parse(content)
-              const newTab = { 
-                ...importedTab, 
-                id: Date.now(), 
-                drawerOpen: true, 
-                lastDrawerState: true, 
-                brokers: importedTab.brokers.map(broker => ({
-                  ...broker, 
-                  isRunning: false, 
-                  imageStream: null, 
-                  client: null 
-                }))
+          if (file) {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              try {
+                const importedData = JSON.parse(e.target.result)
+                const newTab = {
+                  id: Date.now(),
+                  name: importedData.name,
+                  drawerOpen: true,
+                  lastDrawerState: true,
+                  brokers: importedData.brokers
+                }
+                this.tabs.push(newTab)
+                this.setCurrentTab(newTab.id)
+              } catch (error) {
+                console.error('Error importing view:', error)
               }
-              this.tabs.push(newTab)
-            } catch (error) {
-              console.error('Error importing view:', error)
             }
+            reader.readAsText(file)
           }
-          reader.readAsText(file)
+        },
+        async exportView() {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const exportData = {
+            name: currentTab.name,
+            brokers: currentTab.brokers.map(broker => ({
+              name: broker.name,
+              url: broker.url,
+              topics: broker.topics
+            }))
+          }
+          const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${currentTab.name}.json`
+          a.click()
+          URL.revokeObjectURL(url)
+        },
+        async importViewReplace(event) {
+          const file = event.target.files[0]
+          if (file) {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              try {
+                const importedData = JSON.parse(e.target.result)
+                const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+                currentTab.name = importedData.name
+                this.newTabName = currentTab.name
+                currentTab.brokers = importedData.brokers
+              } catch (error) {
+                console.error('Error importing view:', error)
+              }
+            }
+            reader.readAsText(file)
+          }
         }
       },
       mounted() {
@@ -1116,12 +1130,10 @@
                   <v-icon>mdi-export</v-icon>
                   Export
                 </v-btn>
-                <v-btn>
-                  <label for="import-file-dialog" style="cursor: pointer;">
-                    <v-icon>mdi-import</v-icon>
-                    Import
-                  </label>
-                  <input type="file" id="import-file-dialog" @change="importView" style="display: none;" />
+                <v-btn @click="$refs.importReplaceInput.click()">
+                  <v-icon>mdi-import</v-icon>
+                  Import
+                  <input type="file" @change="importViewReplace" style="display: none;" ref="importReplaceInput">
                 </v-btn>
               </v-card-actions>
             </v-card>
