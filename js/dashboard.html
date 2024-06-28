@@ -624,6 +624,7 @@
               }
             }
           }
+          this.$emit('auto-save')
         },
         displayContent(broker, topic) {
           if (topic.type === 'text') {
@@ -871,6 +872,7 @@
           })
           this.currentTab = tabId
           this.newTabName = this.tabs.find(tab => tab.id === tabId).name
+          this.autoSaveViews()
         },
         toggleDrawer() {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
@@ -1335,7 +1337,7 @@
                   Add Broker
                 </v-btn>
                 <v-spacer></v-spacer>
-                <v-btn @click="exportView">
+                <v-btn @click="exportTopics">
                   <v-icon>mdi-export</v-icon>
                   Export
                 </v-btn>
