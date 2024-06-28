@@ -10,6 +10,7 @@
   <link href="https://cdn.jsdelivr.net/npm/vuetify@3.1.9/dist/vuetify.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vuetify@3.1.9/dist/vuetify.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
   <style>
     body {
       margin: 0;
@@ -139,7 +140,6 @@
 <body>
   <div id="app"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
   <script type="module">
     const { createApp, defineComponent, ref, onMounted, watch, nextTick } = Vue
     const { createVuetify, useDisplay } = Vuetify
@@ -685,6 +685,7 @@
         handleWindowFocus(windowId) {
           this.windowOrder = this.windowOrder.filter(id => id !== windowId)
           this.windowOrder.push(windowId)
+          this.$emit('auto-save')
         },
         getWindowZIndex(windowId) {
           return this.windowOrder.indexOf(windowId) + 1000
@@ -701,13 +702,16 @@
           this.windows = this.windows.filter(w => w.id !== windowId)
           this.windowOrder = this.windowOrder.filter(id => id !== windowId)
           this.checkedPaths = this.checkedPaths.filter(path => path !== windowId)
+          this.$emit('auto-save')
         },
         minimizeWindow(windowId) {
           this.$refs[`window-${windowId}`][0].toggleMinimize()
           this.checkedPaths = this.checkedPaths.filter(path => path !== windowId)
+          this.$emit('auto-save')
         },
         maximizeWindow(windowId) {
           this.$refs[`window-${windowId}`][0].toggleMaximize()
+          this.$emit('auto-save')
         },
         findNewWindowPosition() {
           const margin = 10
@@ -769,6 +773,7 @@
               }
             }
           })
+          this.$emit('auto-save')
         },
         isOverlapping(left, top, width, height, position) {
           return !(
@@ -847,10 +852,10 @@
       components: { DashboardView },
       data() {
         return {
-          currentTab: 1,
-          tabCounter: 1,
+          currentTab: 0,
+          tabCounter: 0,
           tabs: [
-            { id: 1, name: 'View 1', drawerOpen: true, lastDrawerState: true, brokers: [] }
+            // { id: 1, name: 'View 1', drawerOpen: true, lastDrawerState: true, brokers: [] }
           ],
           dialog: false,
           newTabName: ''
@@ -872,12 +877,14 @@
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.drawerOpen = !currentTab.drawerOpen
           currentTab.lastDrawerState = currentTab.drawerOpen
+          this.autoSaveViews()
         },
         addNewTab() {
           this.tabCounter++
           const newTab = { id: this.tabCounter, name: `View ${this.tabCounter}`, drawerOpen: true, lastDrawerState: true, brokers: [] }
           this.tabs.push(newTab)
           this.setCurrentTab(newTab.id)
+          this.autoSaveViews()
         },
         async closeTab(tabId) {
           const tabIdx = this.tabs.findIndex(tab => tab.id === tabId)
@@ -892,6 +899,7 @@
             if (this.currentTab === tabId) {
               this.currentTab = this.tabs.length ? this.tabs[0].id : ''
             }
+            this.autoSaveViews()
           }
         },
         openDialog() {
@@ -901,10 +909,12 @@
         addTopic(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers[brokerIndex].topics.push({ name: '', type: 'text' })
+          this.autoSaveViews()
         },
         addBroker() {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers.push({ name: '', url: '', topics: [], isRunning: false, imageStream: null, client: null })
+          this.autoSaveViews()
         },
         renameCurrentTab(event) {
           const newName = event.target.value.trim()
@@ -913,6 +923,7 @@
             if (tab) {
               tab.name = newName
             }
+            this.autoSaveViews()
           }
         },
         moveBrokerUp(brokerIndex) {
@@ -921,6 +932,7 @@
             const temp = currentTab.brokers[brokerIndex]
             currentTab.brokers[brokerIndex] = currentTab.brokers[brokerIndex - 1]
             currentTab.brokers[brokerIndex - 1] = temp
+            this.autoSaveViews()
           }
         },
         moveBrokerDown(brokerIndex) {
@@ -929,6 +941,7 @@
             const temp = currentTab.brokers[brokerIndex]
             currentTab.brokers[brokerIndex] = currentTab.brokers[brokerIndex + 1]
             currentTab.brokers[brokerIndex + 1] = temp
+            this.autoSaveViews()
           }
         },
         moveTopicUp(brokerIndex, topicIndex) {
@@ -938,6 +951,7 @@
             const temp = broker.topics[topicIndex]
             broker.topics[topicIndex] = broker.topics[topicIndex - 1]
             broker.topics[topicIndex - 1] = temp
+            this.autoSaveViews()
           }
         },
         moveTopicDown(brokerIndex, topicIndex) {
@@ -947,6 +961,7 @@
             const temp = broker.topics[topicIndex]
             broker.topics[topicIndex] = broker.topics[topicIndex + 1]
             broker.topics[topicIndex + 1] = temp
+            this.autoSaveViews()
           }
         },
         validateBrokerName(brokerIndex) {
@@ -955,15 +970,18 @@
           if (broker.name.includes('/')) {
             broker.name = broker.name.replace(/\//g, '')
           }
+          this.autoSaveViews()
         },
         deleteBroker(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers.splice(brokerIndex, 1)
+          this.autoSaveViews()
         },
         deleteTopic(brokerIndex, topicIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const broker = currentTab.brokers[brokerIndex]
           broker.topics.splice(topicIndex, 1)
+          this.autoSaveViews()
         },
         async exportTopics() {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
@@ -994,6 +1012,7 @@
                 currentTab.name = importedData.name
                 this.newTabName = currentTab.name
                 currentTab.brokers = importedData.brokers
+                this.autoSaveViews()
               } catch (error) {
                 console.error('Error importing view:', error)
               }
@@ -1099,6 +1118,7 @@
               try {
                 const importedData = JSON.parse(e.target.result)
                 this.loadView(importedData)
+                this.autoSaveViews()
               } catch (error) {
                 console.error('Error importing view:', error)
               }
@@ -1128,6 +1148,7 @@
                 for (let view of importedData.views) {
                   this.loadView(view)
                 }
+                this.autoSaveViews()
               } catch (error) {
                 console.error('Error importing dashboard:', error)
               }
@@ -1145,13 +1166,47 @@
           }
           this.tabs = []
           this.currentTab = null
+          this.autoSaveViews()
+        },
+        autoSaveViews() {
+          this.$nextTick(() => { this.$nextTick(() => { // for this.$ref in dumpView
+            const exportData = {
+              views: this.tabs.map(tab => this.dumpView(tab))
+            }
+            this.saveToLocalStorage(exportData)
+          })})
+        },
+        saveToLocalStorage(data) {
+          try {
+            localStorage.setItem('dashboard', JSON.stringify(data))
+            // console.log('Data saved to localStorage')
+          } catch (error) {
+            console.error('Error saving data to localStorage', error)
+          }
+        },
+        async loadFromLocalStorage() {
+          try {
+            const data = localStorage.getItem('dashboard')
+            if (data) {
+              const parsedData = JSON.parse(data)
+              if (parsedData && parsedData.views) {
+                for (let view of parsedData.views) {
+                  this.loadView(view)
+                }
+              }
+              console.log('Data loaded from localStorage')
+            }
+          } catch (error) {
+            console.error('Error loading data from localStorage', error)
+          }
         }
       },
-      mounted() {
+      async mounted() {
         const el = this.$refs.tabContainer
         new Sortable(el, {
           animation: 150
         })
+        await this.loadFromLocalStorage()
       },
       template: `
         <v-app>
@@ -1299,6 +1354,7 @@
             :brokers="tab.brokers"
             v-show="currentTab === tab.id"
             :ref="'view-' + tab.id"
+            @auto-save="autoSaveViews"
           ></dashboard-view>
         </v-app>
       `
