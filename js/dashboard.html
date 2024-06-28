@@ -895,7 +895,6 @@
             }
           }
         },
-        // Move broker up
         moveBrokerUp(brokerIndex) {
           if (brokerIndex > 0) {
             const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
@@ -904,7 +903,6 @@
             currentTab.brokers[brokerIndex - 1] = temp
           }
         },
-        // Move broker down
         moveBrokerDown(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           if (brokerIndex < currentTab.brokers.length - 1) {
@@ -913,7 +911,6 @@
             currentTab.brokers[brokerIndex + 1] = temp
           }
         },
-        // Move topic up
         moveTopicUp(brokerIndex, topicIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const broker = currentTab.brokers[brokerIndex]
@@ -923,7 +920,6 @@
             broker.topics[topicIndex - 1] = temp
           }
         },
-        // Move topic down
         moveTopicDown(brokerIndex, topicIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const broker = currentTab.brokers[brokerIndex]
@@ -933,7 +929,6 @@
             broker.topics[topicIndex + 1] = temp
           }
         },
-        // Check for / character in broker name
         validateBrokerName(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const broker = currentTab.brokers[brokerIndex]
@@ -941,16 +936,59 @@
             broker.name = broker.name.replace(/\//g, '')
           }
         },
-        // Delete broker
         deleteBroker(brokerIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           currentTab.brokers.splice(brokerIndex, 1)
         },
-        // Delete topic
         deleteTopic(brokerIndex, topicIndex) {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const broker = currentTab.brokers[brokerIndex]
           broker.topics.splice(topicIndex, 1)
+        },
+        exportView() {
+          const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
+          const { id, drawerOpen, lastDrawerState, ...exportTab } = currentTab
+          exportTab.brokers = exportTab.brokers.map(broker => {
+            const { isRunning, imageStream, client, ...exportBroker } = broker
+            return exportBroker
+          })
+          const dataStr = JSON.stringify(exportTab, null, 2)  // Add null and 2 for pretty-printing
+          const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
+
+          const exportFileDefaultName = `${currentTab.name}.json`
+
+          const linkElement = document.createElement('a')
+          linkElement.setAttribute('href', dataUri)
+          linkElement.setAttribute('download', exportFileDefaultName)
+          linkElement.click()
+        },
+        importView(event) {
+          const file = event.target.files[0]
+          if (!file) return
+
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            const content = e.target.result
+            try {
+              const importedTab = JSON.parse(content)
+              const newTab = { 
+                ...importedTab, 
+                id: Date.now(), 
+                drawerOpen: true, 
+                lastDrawerState: true, 
+                brokers: importedTab.brokers.map(broker => ({
+                  ...broker, 
+                  isRunning: false, 
+                  imageStream: null, 
+                  client: null 
+                }))
+              }
+              this.tabs.push(newTab)
+            } catch (error) {
+              console.error('Error importing view:', error)
+            }
+          }
+          reader.readAsText(file)
         }
       },
       mounted() {
@@ -986,6 +1024,15 @@
               <v-list>
                 <v-list-item @click="openDialog">
                   <v-list-item-title>View Settings</v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="exportView">
+                  <v-list-item-title>Export View</v-list-item-title>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>
+                    <label for="import-file" style="cursor: pointer;">Import View</label>
+                    <input type="file" id="import-file" @change="importView" style="display: none;" />
+                  </v-list-item-title>
                 </v-list-item>
               </v-list>
             </v-menu>
@@ -1063,6 +1110,18 @@
                 <v-btn @click="addBroker">
                   <v-icon>mdi-plus</v-icon>
                   Add Broker
+                </v-btn>
+                <v-spacer></v-spacer>
+                <v-btn @click="exportView">
+                  <v-icon>mdi-export</v-icon>
+                  Export
+                </v-btn>
+                <v-btn>
+                  <label for="import-file-dialog" style="cursor: pointer;">
+                    <v-icon>mdi-import</v-icon>
+                    Import
+                  </label>
+                  <input type="file" id="import-file-dialog" @change="importView" style="display: none;" />
                 </v-btn>
               </v-card-actions>
             </v-card>
