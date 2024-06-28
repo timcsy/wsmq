@@ -447,12 +447,24 @@
           }
         })
 
+        const getPosition = () => {
+          const el = windowRef.value
+          return {
+            left: parseInt(el.style.left),
+            top: parseInt(el.style.top),
+            width: parseInt(el.style.width),
+            height: parseInt(el.style.height)
+          }
+        }
+
         return {
           isManuallyResized,
           windowRef,
           toggleMaximize,
           toggleMinimize,
-          minimized
+          minimized,
+          maximized,
+          getPosition
         }
       },
       methods: {
@@ -489,7 +501,10 @@
       },
       props: {
         drawerOpen: Boolean,
-        brokers: Array
+        brokers: {
+          type: Array,
+          default: () => []
+        }
       },
       setup(props) {
         const { mdAndUp, mdAndDown } = useDisplay()
@@ -516,7 +531,7 @@
       watch: {
         brokers: {
           handler(newBrokers) {
-            this.updateTreeData(newBrokers)
+            this.updateTreeData(newBrokers || [])
           },
           deep: true,
           immediate: true
@@ -580,8 +595,10 @@
                   id: path,
                   title: path,
                   brokerUrl: broker.url,
+                  position: { left, top, width, height },
                   minimized: false,
-                  position: { left, top, width, height }
+                  maximized: false,
+                  isManuallyResized: false
                 })
                 this.windowOrder.push(path)
 
@@ -813,6 +830,9 @@
               :window-z-index="getWindowZIndex(window.id)"
               :position="window.position"
               :drawer-open="drawerOpen"
+              :maximized="window.maximized"
+              :minimized="window.minimized"
+              :is-manually-resized="window.isManuallyResized"
               @focus="handleWindowFocus"
               @close="closeWindow"
               @minimize="minimizeWindow"
@@ -945,30 +965,7 @@
           const broker = currentTab.brokers[brokerIndex]
           broker.topics.splice(topicIndex, 1)
         },
-        async importView(event) {
-          const file = event.target.files[0]
-          if (file) {
-            const reader = new FileReader()
-            reader.onload = (e) => {
-              try {
-                const importedData = JSON.parse(e.target.result)
-                const newTab = {
-                  id: Date.now(),
-                  name: importedData.name,
-                  drawerOpen: true,
-                  lastDrawerState: true,
-                  brokers: importedData.brokers
-                }
-                this.tabs.push(newTab)
-                this.setCurrentTab(newTab.id)
-              } catch (error) {
-                console.error('Error importing view:', error)
-              }
-            }
-            reader.readAsText(file)
-          }
-        },
-        async exportView() {
+        async exportTopics() {
           const currentTab = this.tabs.find(tab => tab.id === this.currentTab)
           const exportData = {
             name: currentTab.name,
@@ -982,11 +979,11 @@
           const url = URL.createObjectURL(blob)
           const a = document.createElement('a')
           a.href = url
-          a.download = `${currentTab.name}.json`
+          a.download = `${currentTab.name}_topics.json`
           a.click()
           URL.revokeObjectURL(url)
         },
-        async importViewReplace(event) {
+        async importTopics(event) {
           const file = event.target.files[0]
           if (file) {
             const reader = new FileReader()
@@ -999,6 +996,138 @@
                 currentTab.brokers = importedData.brokers
               } catch (error) {
                 console.error('Error importing view:', error)
+              }
+            }
+            reader.readAsText(file)
+          }
+        },
+        dumpView(tab) {
+          const view = this.$refs[`view-${tab.id}`][0]
+          return {
+            name: tab.name,
+            drawer: tab.lastDrawerState,
+            brokers: tab.brokers.map(broker => ({
+              name: broker.name,
+              url: broker.url,
+              topics: broker.topics.map(topic => ({ name: topic.name, type: topic.type }))
+            })),
+            windows: view.windows.map(window => {
+              const windowRef = view.$refs[`window-${window.id}`][0]
+              return {
+                id: window.id,
+                title: window.title,
+                brokerUrl: window.brokerUrl,
+                minimized: windowRef.minimized,
+                position: windowRef.getPosition(),
+                isManuallyResized: windowRef.isManuallyResized
+              }
+            }),
+            windowOrder: view.windowOrder,
+            checkedPaths: view.checkedPaths
+          }
+        },
+        loadView(data) {
+          const tab = {
+            id: Date.now(),
+            name: data.name,
+            drawerOpen: true,
+            lastDrawerState: data.drawer,
+            brokers: data.brokers
+          }
+          this.tabs.push(tab)
+          this.setCurrentTab(tab.id)
+          
+          // Restore window contents and states
+          this.$nextTick(async () => {
+            const view = this.$refs[`view-${tab.id}`][0]
+            view.windows = data.windows
+            view.windowOrder = data.windowOrder
+            const brokerNames = view.windows.map(w => w.id.split('/')[0])
+            for (let broker of tab.brokers) {
+              if (brokerNames.includes(broker.name)) {
+                if (!broker.isRunning) {
+                  // Reinitialize broker
+                  broker.imageStream = new ImageStream(broker.url, 1)
+                  broker.client = broker.imageStream.client
+                  await broker.imageStream.start()
+                  broker.isRunning = true
+                }
+              }
+            }
+            view.checkedPaths = data.checkedPaths
+
+            this.$nextTick(() => {
+              for (let window of view.windows) {
+                const windowComponent = view.$refs[`window-${window.id}`]
+                if (windowComponent && windowComponent.length > 0) {
+                  const windowContent = windowComponent[0].$el.querySelector('.window-content')
+                  if (windowContent) {
+                    const broker = view.brokers.find(b => b.url === window.brokerUrl)
+                    const topic = window.id.split('/').slice(1).join('/')
+                    const topicObj = broker.topics.find(t => t.name === topic)
+                    windowContent.innerHTML = ''
+                    windowContent.appendChild(view.displayContent(broker, topicObj))
+                    windowComponent[0].isManuallyResized = window.isManuallyResized
+                    const { left, top, width, height } = window.position
+                    windowComponent[0].windowRef.style.left = `${left}px`
+                    windowComponent[0].windowRef.style.top = `${top}px`
+                    windowComponent[0].windowRef.style.width = `${width}px`
+                    windowComponent[0].windowRef.style.height = `${height}px`
+                    windowComponent[0].minimized = window.minimized
+                  }
+                }
+              }
+            })
+          })
+        },
+        exportView() {
+          const tab = this.tabs.find(tab => tab.id === this.currentTab)
+          const exportData = this.dumpView(tab)
+          const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${tab.name}.json`
+          a.click()
+          URL.revokeObjectURL(url)
+        },
+        async importView(event) {
+          const file = event.target.files[0]
+          if (file) {
+            const reader = new FileReader()
+            reader.onload = (e) => {
+              try {
+                const importedData = JSON.parse(e.target.result)
+                this.loadView(importedData)
+              } catch (error) {
+                console.error('Error importing view:', error)
+              }
+            }
+            reader.readAsText(file)
+          }
+        },
+        exportViews() {
+          const exportData = {
+            views: this.tabs.map(tab => this.dumpView(tab))
+          }
+          const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'dashboard.json'
+          a.click()
+          URL.revokeObjectURL(url)
+        },
+        async importViews(event) {
+          const file = event.target.files[0]
+          if (file) {
+            const reader = new FileReader()
+            reader.onload = async (e) => {
+              try {
+                const importedData = JSON.parse(e.target.result)
+                importedData.views.forEach(view => this.loadView(view))
+              } catch (error) {
+                console.error('Error importing dashboard:', error)
               }
             }
             reader.readAsText(file)
@@ -1046,6 +1175,15 @@
                   <v-list-item-title>
                     <label for="import-file" style="cursor: pointer;">Import View</label>
                     <input type="file" id="import-file" @change="importView" style="display: none;" />
+                  </v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="exportViews">
+                  <v-list-item-title>Export Views</v-list-item-title>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title>
+                    <label for="import-views-file" style="cursor: pointer;">Import Views</label>
+                    <input type="file" id="import-views-file" @change="importViews" style="display: none;" />
                   </v-list-item-title>
                 </v-list-item>
               </v-list>
@@ -1130,10 +1268,10 @@
                   <v-icon>mdi-export</v-icon>
                   Export
                 </v-btn>
-                <v-btn @click="$refs.importReplaceInput.click()">
+                <v-btn @click="$refs.importTopics.click()">
                   <v-icon>mdi-import</v-icon>
                   Import
-                  <input type="file" @change="importViewReplace" style="display: none;" ref="importReplaceInput">
+                  <input type="file" @change="importTopics" style="display: none;" ref="importTopics">
                 </v-btn>
               </v-card-actions>
             </v-card>
@@ -1144,6 +1282,7 @@
             :drawer-open="tab.drawerOpen"
             :brokers="tab.brokers"
             v-show="currentTab === tab.id"
+            :ref="'view-' + tab.id"
           ></dashboard-view>
         </v-app>
       `
