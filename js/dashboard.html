@@ -875,7 +875,7 @@
         },
         addNewTab() {
           this.tabCounter++
-          const newTab = { id: Date.now(), name: `View ${this.tabCounter}`, drawerOpen: true, lastDrawerState: true, brokers: [] }
+          const newTab = { id: this.tabCounter, name: `View ${this.tabCounter}`, drawerOpen: true, lastDrawerState: true, brokers: [] }
           this.tabs.push(newTab)
           this.setCurrentTab(newTab.id)
         },
@@ -1027,10 +1027,10 @@
           }
         },
         loadView(data) {
+          this.tabCounter++
           const tab = {
-            id: Date.now(),
+            id: this.tabCounter,
             name: data.name,
-            drawerOpen: true,
             lastDrawerState: data.drawer,
             brokers: data.brokers
           }
@@ -1125,13 +1125,26 @@
             reader.onload = async (e) => {
               try {
                 const importedData = JSON.parse(e.target.result)
-                importedData.views.forEach(view => this.loadView(view))
+                for (let view of importedData.views) {
+                  this.loadView(view)
+                }
               } catch (error) {
                 console.error('Error importing dashboard:', error)
               }
             }
             reader.readAsText(file)
           }
+        },
+        async clearAll() {
+          for (const tab of this.tabs) {
+            for (const broker of tab.brokers) {
+              if (broker.imageStream) {
+                await broker.imageStream.stop()
+              }
+            }
+          }
+          this.tabs = []
+          this.currentTab = null
         }
       },
       mounted() {
@@ -1185,6 +1198,9 @@
                     <label for="import-views-file" style="cursor: pointer;">Import Views</label>
                     <input type="file" id="import-views-file" @change="importViews" style="display: none;" />
                   </v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="clearAll">
+                  <v-list-item-title>Clear All</v-list-item-title>
                 </v-list-item>
               </v-list>
             </v-menu>
